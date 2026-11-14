@@ -1,0 +1,83 @@
+#pragma once
+
+#include "vision_link.hpp"
+#include <cerrno>
+#include <cstring>
+#include <stdexcept>
+#include <string>
+#include <termios.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+namespace vision_link {
+
+// Linux/Orange Pi 串口发送器。仅发送香橙派 -> F407 的观测帧，不接收 ACK。
+class SerialSender {
+public:
+    SerialSender(const std::string& device, std::uint32_t session)
+        : session_(session) {
+        if (device.empty() || session == 0) throw std::invalid_argument("Serial device and nonzero session are required");
+        fd_ = ::open(device.c_str(), O_WRONLY | O_NOCTTY | O_NONBLOCK);
+        if (fd_ < 0) throw std::runtime_error("Cannot open vision UART: " + std::string(std::strerror(errno)));
+        termios tty{};
+        if (tcgetattr(fd_, &tty) != 0) { close(); throw std::runtime_error("tcgetattr failed"); }
+        cfmakeraw(&tty);
+        cfsetispeed(&tty, B115200);
+        cfsetospeed(&tty, B115200);
+        tty.c_cflag |= (CLOCAL | CREAD);
+        tty.c_cflag &= ~CSTOPB;
+        tty.c_cflag &= ~PARENB;
+        tty.c_cflag &= ~CSIZE;
+        tty.c_cflag |= CS8;
+#ifdef CRTSCTS
+        tty.c_cflag &= ~CRTSCTS;
+#endif
+        tty.c_cc[VMIN] = 0;
+        tty.c_cc[VTIME] = 0;
+        if (tcsetattr(fd_, TCSANOW, &tty) != 0) { close(); throw std::runtime_error("tcsetattr failed"); }
+        tcflush(fd_, TCIOFLUSH);
+    }
+
+    SerialSender(const SerialSender&) = delete;
+    SerialSender& operator=(const SerialSender&) = delete;
+    ~SerialSender() { close(); }
+
+    // One-shot HELLO. Caller is responsible for ensuring the F407 is physically in STOP.
+    void sendHello() { writeAll(encodeHello(session_)); }
+
+    // Send current track/element observation and advance the shared business sequence.
+    void sendTrack(std::uint16_t processingAgeMs, const TrackObservation& observation) {
+        const auto frame = encodeTrack(sequence_, session_, processingAgeMs, observation);
+        writeAll(frame);
+        sequence_ = static_cast<std::uint16_t>(sequence_ + 1);
+    }
+
+    void sendTile(uint16_t age, uint8_t index, const std::array<uint8_t,9>& cells) {
+        writeAll(encodeTile(sequence_,session_,age,index,cells));
+        ++sequence_;
+    }
+private:
+    void close() {
+        if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
+    }
+
+    void writeAll(const std::vector<std::uint8_t>& bytes) {
+        std::size_t offset = 0;
+        while (offset < bytes.size()) {
+            const ssize_t n = ::write(fd_, bytes.data() + offset, bytes.size() - offset);
+            if (n > 0) { offset += static_cast<std::size_t>(n); continue; }
+            if (n < 0 && errno == EINTR) continue;
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                // Never wait indefinitely behind a stale vision queue.
+                throw std::runtime_error("Vision UART would block; drop frame rather than queue stale data");
+            }
+            throw std::runtime_error("Vision UART write failed: " + std::string(std::strerror(errno)));
+        }
+    }
+
+    int fd_ = -1;
+    std::uint32_t session_;
+    std::uint16_t sequence_ = 1; // HELLO uses seq=0; business frames start at 1.
+};
+
+} // namespace vision_link
