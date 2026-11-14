@@ -38,6 +38,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Menu test compilation failed' }
     & (Join-Path $carOutput 'test_car_menu.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Menu tests failed' }
+    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_params.c CODE/Car_Params.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_params.exe
+    if ($LASTEXITCODE -ne 0) { throw 'PID storage compilation failed' }
+    & (Join-Path $carOutput 'test_car_params.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'PID storage tests failed' }
     clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_sudoku.c CODE/Car_Sudoku.c -o build/test_car_sudoku.exe
     if ($LASTEXITCODE -ne 0) { throw 'Sudoku test compilation failed' }
     & (Join-Path $carOutput 'test_car_sudoku.exe')
@@ -49,6 +53,8 @@ try {
     Get-Content -LiteralPath $carLog
     if ($carProcess.ExitCode -ne 0) { throw "Keil build failed: $($carProcess.ExitCode)" }
     if (!(Select-String -LiteralPath $carLog -SimpleMatch '0 Error(s), 0 Warning(s).')) { throw 'Keil clean-build summary missing' }
+    python Tools/check_pid_hex.py
+    if ($LASTEXITCODE -ne 0) { throw 'PID Flash reservation check failed' }
 } finally {
     Pop-Location
 }

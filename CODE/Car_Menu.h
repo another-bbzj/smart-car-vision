@@ -3,15 +3,17 @@
 #include "My_Key.h"
 #include "Car_Core.h"
 #include "Car_Race.h"
+#include "Car_Params.h"
 
 typedef enum { MENU_RACE, MENU_SENSORS, MENU_LEFT_PID, MENU_RIGHT_PID, MENU_GROUPS } MenuGroup;
 typedef enum { START_READY, START_STOP_FIRST, START_MOVING, START_RESULT,
                START_NO_ROAD, START_NEW_SESSION } StartCondition;
-typedef enum { MENU_IDLE, MENU_LAUNCH } MenuAction;
+typedef enum { MENU_IDLE, MENU_LAUNCH, MENU_SAVE_PARAMS } MenuAction;
 
 typedef struct {
     uint8_t depth, group, item[MENU_GROUPS], feedback;
     unsigned candidate; /* selected gain in hundredths */
+    CarParamsStatus params_status;
 } CarMenu;
 
 typedef struct {
@@ -20,6 +22,7 @@ typedef struct {
     uint8_t state, fault, autonomous, lap, phase, fresh;
     uint8_t imu_present, gyro_ok, samples;
     uint8_t tile_mask;
+    uint8_t params_dirty, params_saved;
     float distance, yaw_deg, gyro_dps, bias_dps;
     float speed[2], reference[2], pwm[2], gains[3];
     CarVisionObservation obs;

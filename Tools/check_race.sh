@@ -11,8 +11,9 @@ cc "${ccflags[@]}" Tests/test_car_pid.c CODE/Car_PID.c CODE/Car_Reference.c -lm 
 cc "${ccflags[@]}" Tests/test_car_vision.c CODE/Car_Vision.c -lm -o "$out/link"
 cc "${ccflags[@]}" Tests/test_car_race.c CODE/Car_Race.c CODE/Car_Sudoku.c "${core[@]}" -lm -o "$out/race"
 cc "${ccflags[@]}" Tests/test_car_menu.c CODE/Car_Menu.c "${core[@]}" -lm -o "$out/menu"
+cc "${ccflags[@]}" Tests/test_car_params.c CODE/Car_Params.c "${core[@]}" -lm -o "$out/params"
 cc "${ccflags[@]}" Tests/test_car_sudoku.c CODE/Car_Sudoku.c -lm -o "$out/sudoku_test"
-for t in core pid link race menu sudoku_test; do "$out/$t"; done
+for t in core pid link race menu params sudoku_test; do "$out/$t"; done
 cd vision_inspection/vision
 read -ra flags <<< "$(pkg-config --cflags --libs opencv4)"
 build_one() {

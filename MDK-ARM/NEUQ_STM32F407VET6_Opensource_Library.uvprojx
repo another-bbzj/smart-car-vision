@@ -252,7 +252,7 @@
               <IROM>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x80000</Size>
+                <Size>0x40000</Size>
               </IROM>
               <XRAM>
                 <Type>0</Type>
@@ -277,7 +277,7 @@
               <OCR_RVCT4>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x80000</Size>
+                <Size>0x40000</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -1073,6 +1073,16 @@
               <FileName>Car_Menu.c</FileName>
               <FileType>1</FileType>
               <FilePath>../CODE/Car_Menu.c</FilePath>
+            </File>
+            <File>
+              <FileName>Car_Params.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/Car_Params.c</FilePath>
+            </File>
+            <File>
+              <FileName>Car_ParamsFlash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/Car_ParamsFlash.c</FilePath>
             </File>
             <File>
               <FileName>My_Key.c</FileName>

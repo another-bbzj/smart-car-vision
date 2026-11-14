@@ -7,7 +7,8 @@ LR_IROM_BOOT 0x08000000 0x00004000  {   ; 16 KB (Sector 0)
   }
 }
 
-LR_IROM_APP  0x08010000 0x00070000  {   ; from Sector 4 to end (448 KB)
+; Sectors 6/7 (0x08040000..0x0807FFFF) are reserved for PID records.
+LR_IROM_APP  0x08010000 0x00030000  {   ; Sectors 4/5 only (192 KB)
   ER_APP 0x08010000  {               ; place the whole application here
     *(.isr_vector_app)               ; app vector table at APP_BASE
     *(+RO)                           ; .text .rodata ...

@@ -33,6 +33,28 @@ int main(void)
     unsigned row, group, item;
     float before;
     Car_Init(&car);
+    /* PID submenu must offer a fourth entry for explicit persistent saving. */
+    menu.depth = 1;
+    menu.group = MENU_LEFT_PID;
+    press(&menu,&car,KEY_UP,START_READY);
+    assert(menu.item[MENU_LEFT_PID] == 3);
+    assert(press(&menu,&car,KEY_OK,START_READY) == MENU_IDLE);
+    assert(menu.depth == 2);
+    {
+        Key_Event_Struct repeat = {KEY_OK,KEY_EVENT_REPEAT};
+        assert(CarMenu_Key(&menu,repeat,&car,START_READY)==MENU_IDLE);
+    }
+    car.speed[0]=3;
+    assert(press(&menu,&car,KEY_OK,START_READY)==MENU_IDLE);
+    car.speed[0]=0;
+    car.state=CAR_RUN;
+    assert(press(&menu,&car,KEY_OK,START_READY)==MENU_IDLE);
+    car.state=CAR_STOP;
+    assert(press(&menu,&car,KEY_OK,START_RESULT)==MENU_IDLE);
+    assert(press(&menu,&car,KEY_OK,START_READY)==MENU_SAVE_PARAMS);
+    assert(menu.params_status==PARAMS_BUSY);
+    assert(press(&menu,&car,KEY_OK,START_READY)==MENU_IDLE);
+    memset(&menu,0,sizeof menu);
     road.session = 12;
     road.valid_mask = VISION_CURVATURE_VALID;
     road.confidence = 0.9f;
@@ -99,11 +121,25 @@ int main(void)
     view.imu_present = 1;
     for (group=0; group<MENU_GROUPS; ++group) {
         view.menu.group = (uint8_t)group;
-        for (item=0; item<3; ++item) {
+        for (item=0; item<(group>=MENU_LEFT_PID?4U:3U); ++item) {
             view.menu.item[group] = (uint8_t)item;
             for (row=0; row<UI_ROWS; ++row) CarMenu_DrawRow(&view,row,board,2);
         }
     }
+    view.menu.group=MENU_RIGHT_PID;
+    view.menu.item[MENU_RIGHT_PID]=3;
+    for(item=PARAMS_DEFAULTS;item<=PARAMS_STOP_FIRST;item++) {
+        view.menu.params_status=(CarParamsStatus)item;
+        for(row=0;row<UI_ROWS;row++) CarMenu_DrawRow(&view,row,board,0);
+    }
+    view.menu.params_status=PARAMS_SAVED;
+    view.params_saved=1; view.params_dirty=1;
+    CarMenu_DrawRow(&view,4,board,0);
+    assert(strstr(rows[4],"Unsaved"));
+    view.start=START_RESULT;
+    CarMenu_DrawRow(&view,5,board,0);
+    assert(strstr(rows[5],"Wait for result"));
+    view.start=START_READY;
     view.menu.group = MENU_SENSORS;
     view.menu.item[MENU_SENSORS] = 1;
     view.gyro_ok = 0;

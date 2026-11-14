@@ -1,13 +1,14 @@
 #include "Car_Menu.h"
 #include "My_Lcd.h"
 #include <stdio.h>
+#include <math.h>
 
 /* Navigation follows task2: circular lists, per-page cursor, OK applies,
  * BACK discards. The third level holds the actual action or live data. */
 static const char *const groups[] = {"Race", "Sensors", "Left wheel PID", "Right wheel PID"};
 static const char *const race_items[] = {"Start race", "Race status", "Sudoku result"};
 static const char *const sensor_items[] = {"Wheel speeds", "IMU / MPU6050", "Vision"};
-static const char *const gain_names[] = {"Kp", "Ki", "Kd"};
+static const char *const gain_names[] = {"Kp", "Ki", "Kd", "Save parameters"};
 static const char *const conditions[] = {"Ready", "Stop / clear fault first", "Wheels moving",
     "Preparing result", "Waiting for valid road", "Restart vision with --hello"};
 static const char *const phases[] = {"Track","Gap","Bypass","Red stop","Finish","Fault"};
@@ -35,16 +36,17 @@ static const char *const *items(unsigned group)
 MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCondition start)
 {
     uint8_t *cursor = m->depth == 0 ? &m->group : &m->item[m->group];
-    unsigned count = m->depth == 0 ? MENU_GROUPS : 3;
+    unsigned count = m->depth == 0 ? MENU_GROUPS : (m->group >= MENU_LEFT_PID ? 4U : 3U);
     unsigned item = m->item[m->group];
     int pid = m->group >= MENU_LEFT_PID;
+    if (m->params_status == PARAMS_BUSY) return MENU_IDLE;
     m->feedback = FB_NONE;
     if (key.id == KEY_BACK && key.type == KEY_EVENT_PRESS) {
         if (m->depth) --m->depth;
     } else if (key.id == KEY_UP || key.id == KEY_DOWN) {
         if (m->depth < 2) {
             *cursor = (uint8_t)((*cursor + (key.id == KEY_DOWN ? 1U : count-1U)) % count);
-        } else if (pid) {
+        } else if (pid && item < 3) {
             /* Fine taps (Ki/Kd), coarse auto-repeat for larger changes. */
             unsigned step = key.type == KEY_EVENT_REPEAT ? 10U : 1U;
             if (key.id == KEY_UP)
@@ -55,10 +57,18 @@ MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCon
     } else if (key.id == KEY_OK && key.type == KEY_EVENT_PRESS) {
         if (m->depth < 2) {
             ++m->depth;
-            if (m->depth == 2 && pid) {
+            if (m->depth == 2 && pid && item < 3) {
                 Car_Pid_Struct *p = &car->pid[m->group - MENU_LEFT_PID];
                 float gains[] = {p->kp, p->ki, p->kd};
                 m->candidate = (unsigned)(gains[item]*100.0f+0.5f);
+            }
+        } else if (pid && item == 3) {
+            if (car->state != CAR_STOP || !(fabsf(car->speed[0]) < 2 && fabsf(car->speed[1]) < 2)
+                || start == START_RESULT) {
+                m->params_status = PARAMS_STOP_FIRST;
+            } else {
+                m->params_status = PARAMS_BUSY;
+                return MENU_SAVE_PARAMS;
             }
         } else if (pid) {
             unsigned wheel = m->group - MENU_LEFT_PID;
@@ -104,7 +114,7 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
                  (v->state == CAR_FAULT ? "FAULT" : (v->autonomous ? "RACE" : "MANUAL")), (unsigned)v->fault);
     } else if (m->depth < 2) {
         unsigned n = row-1;
-        if (n < (m->depth ? 3U : (unsigned)MENU_GROUPS)) {
+        if (n < (m->depth ? (group >= MENU_LEFT_PID ? 4U : 3U) : (unsigned)MENU_GROUPS)) {
             if (n == (m->depth ? item : group)) style = UI_STYLE_SELECT;
             snprintf(s,sizeof s,"%s %s",style == UI_STYLE_SELECT ? ">" : " ",m->depth ? list[n] : groups[n]);
         }
@@ -144,6 +154,26 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
             const uint8_t *b = board+6*(row-2);
             snprintf(s,sizeof s,"  %u  %u  %u | %u  %u  %u", b[0],b[1],b[2],b[3],b[4],b[5]);
         }
+    } else if (group >= MENU_LEFT_PID && item == 3) {
+        static const char *const messages[] = {
+            "Using defaults", "Loaded from Flash", "Saved / reboot ready", "Already saved",
+            "Save/read failed: retry", "Invalid PID values", "Saving... keep power on", "Stop / finish result first"
+        };
+        if (row == 2) snprintf(s,sizeof s,"Saves BOTH wheels (6 gains)");
+        if (row == 3) {
+            style = m->params_status == PARAMS_ERROR || m->params_status == PARAMS_INVALID ? UI_STYLE_WARN : UI_STYLE_NORMAL;
+            snprintf(s,sizeof s,"%s",messages[m->params_status]);
+        }
+        if (row == 4) snprintf(s,sizeof s,"%s",!v->params_saved ? "No saved parameters" :
+                              (v->params_dirty ? "Unsaved changes" : "RAM matches saved parameters"));
+        if (row == 5 && m->params_status != PARAMS_BUSY) {
+            int ready = v->state == CAR_STOP && fabsf(v->speed[0]) < 2 && fabsf(v->speed[1]) < 2
+                        && v->start != START_RESULT;
+            style = ready ? UI_STYLE_EDIT : UI_STYLE_NORMAL;
+            snprintf(s,sizeof s,"%s",ready ? "OK: save parameters" :
+                     (v->start == START_RESULT ? "Wait for result processing" : "Stop and keep wheels still"));
+        }
+        if (row == 6) snprintf(s,sizeof s,"Only applied gains are saved");
     } else if (group >= MENU_LEFT_PID) {
         if (row == 2) snprintf(s,sizeof s,"Active %.2f",v->gains[item]);
         if (row == 3) { style = UI_STYLE_EDIT; snprintf(s,sizeof s,"Edit   %.2f",m->candidate/100.0); }
@@ -151,6 +181,7 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
         if (row == 6) snprintf(s,sizeof s,"%s",m->feedback == FB_APPLIED ? "Applied" :
                                (v->state != CAR_STOP || m->feedback == FB_STOP ? "Stop to apply" :
                                (m->feedback == FB_INVALID ? "Invalid gain" : "BACK discards edits")));
+        if (row == 7) snprintf(s,sizeof s,"Then use Save parameters");
     } else if (item == 0) {
         if (row == 2) snprintf(s,sizeof s,"       Ref    RPM    PWM%%");
         if (row == 3 || row == 4) {

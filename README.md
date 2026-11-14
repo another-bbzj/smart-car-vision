@@ -8,6 +8,8 @@
 
 与图像组联调请先阅读 [vision1.2 视觉组交接文档](Docs/Vision12_Handover.md)，包含四个 3×3 数独子块的编号、串口协议、运行入口和验收步骤。
 
+控制开发人员协作请阅读 [下位机控制代码开发交接](Docs/Control_Development_Handover.md)，包含代码地图、调度与接口、硬件资源、比赛状态机、测试和后续任务。左右轮 PID 已支持菜单手动保存、重启自动恢复，操作见 [PID 掉电保存](Docs/PID_Storage.md)。
+
 接线、编译烧录、蓝牙配对和首次校准见 [蓝牙小车使用说明](Docs/Bluetooth_Car.md)。启动电脑驾驶工具：
 
 ```powershell

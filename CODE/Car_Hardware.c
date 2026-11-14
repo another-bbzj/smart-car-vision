@@ -67,6 +67,7 @@
 #include "Car_Hardware.h"
 #include "Car_Race.h"
 #include "Car_Menu.h"
+#include "Car_ParamsFlash.h"
 #include "My_Lcd.h"
 #include <math.h>
 #include <string.h>
@@ -120,6 +121,9 @@ static float gyro_bias;
 static CarMenu menu;
 static StartCondition menu_start;
 static uint8_t result_board[36], result_status;
+static CarParams saved_params;
+static uint8_t params_saved;
+static volatile uint8_t params_pending, params_rebase, menu_refresh;
 
 /* Call in PIT or with interrupts masked to copy one coherent session. */
 static uint8_t copy_tiles(uint8_t tiles[4][9], uint32_t now)
@@ -191,6 +195,7 @@ static void poll_menu(void)
     static uint32_t last;
     static uint8_t shown_result;
     uint32_t now = HAL_GetTick(), mask;
+    if (menu_refresh) { menu_refresh=0; row=UI_ROWS; last=now-120U; }
     if (finish_ready && finish_pending) {
         /* PIT blocks new starts while pending, so tiles are stable during solve. */
         RaceSudokuStatus solved = finish_tile_mask == 15U ?
@@ -212,6 +217,12 @@ static void poll_menu(void)
         mask = __get_PRIMASK();
         __disable_irq();
         view.menu = menu;
+        {
+            CarParams current;
+            CarParams_Capture(&car,&current);
+            view.params_saved = params_saved;
+            view.params_dirty = !params_saved || !CarParams_Equal(&current,&saved_params);
+        }
         view.start = menu_start;
         view.state = car.state;
         view.autonomous = car.autonomous;
@@ -272,8 +283,15 @@ static void race_tick(int32_t l, int32_t r, uint32_t dt_us)
     menu_start = CarMenu_StartCondition(&car,still,finish_pending,
                                         fresh && !vision_rx_fault ? &o : NULL,last_race_session);
     while (My_Key_get_event(&key)) {
+        MenuAction action;
         if (stop_release_ms || (up && key.id != KEY_UP)) continue;
-        if (CarMenu_Key(&menu,key,&car,menu_start) == MENU_LAUNCH && Car_StartRace(&car)) {
+        action = CarMenu_Key(&menu,key,&car,menu_start);
+        if (action == MENU_SAVE_PARAMS) {
+            params_pending = 1;
+            Car_LocalStop(&car);
+            break;
+        }
+        if (action == MENU_LAUNCH && Car_StartRace(&car)) {
             Race_Start(&race);
             last_race_session=o.session;
             result_status = SUDOKU_COLLECTING;
@@ -503,6 +521,7 @@ static int32_t delta_count(unsigned i, TIM_HandleTypeDef *timer)
  */
 void Car_UART_RX_Handler(uint8_t byte)
 {
+    if (params_pending) return;
     if (NEUQ_FIFO_write_byte(&rx_fifo, byte) != NEUQ_FIFO_OK)
     {
         rx_fault = 1;    /* 标记蓝牙接收异常 */
@@ -522,6 +541,7 @@ void Car_UART_RX_Handler(uint8_t byte)
  */
 void Car_Vision_UART_RX_Handler(uint8_t byte)
 {
+    if (params_pending) return;
     if (NEUQ_FIFO_write_byte(&vision_fifo, byte) != NEUQ_FIFO_OK)
     {
         vision_rx_fault = 1;    /* 标记视觉接收异常 */
@@ -662,6 +682,14 @@ void Car_PIT_Handler(void)
     }
 
     last_control_us = sample_us;                 /* 保存本次时刻，供下周期求差 */
+    /* Flash stalls instruction fetch on F407. Stay stopped, ignore queued ARM,
+     * and discard the first timing/encoder sample after saving. */
+    if (params_pending || params_rebase) {
+        params_rebase = 0;
+        Car_LocalStop(&car);
+        output(0,0); output(1,0);
+        return;
+    }
 
     /*
      * 蓝牙字节可能丢失，此时不再信任残留队列：
@@ -789,11 +817,63 @@ void Car_PIT_Handler(void)
  *           4. 建立编码器基准、启动 TIM5；
  *           5. 最后启动 PIT，避免中断访问未初始化对象。
  */
+static void poll_params(void)
+{
+    CarParams current;
+    CarParamsStatus status;
+    uint32_t mask;
+    if (!params_pending) return;
+    mask=__get_PRIMASK();
+    __disable_irq();
+    if (car.state!=CAR_STOP || finish_pending ||
+        !(fabsf(car.speed[0])<2 && fabsf(car.speed[1])<2)) {
+        menu.params_status=PARAMS_STOP_FIRST;
+        params_pending=0;
+        menu_refresh=1;
+        __set_PRIMASK(mask);
+        return;
+    }
+    CarParams_Capture(&car,&current);
+    output(0,0); output(1,0);
+    __set_PRIMASK(mask);
+
+    /* Foreground only, interrupts enabled for HAL timeouts; PIT is gated above. */
+    My_Lcd_print(3,UI_STYLE_WARN,"Saving... keep power on");
+    status=CarParams_FlashSave(&current);
+
+    mask=__get_PRIMASK();
+    __disable_irq();
+    if (status==PARAMS_SAVED || status==PARAMS_UNCHANGED) {
+        saved_params=current;
+        params_saved=1;
+    }
+    menu.params_status=status;
+    Car_LocalStop(&car);
+    NEUQ_FIFO_init(&rx_fifo,rx_buffer,sizeof rx_buffer);
+    NEUQ_FIFO_init(&vision_fifo,vision_buffer,sizeof vision_buffer);
+    rx_fault=vision_rx_fault=0;
+    /* Clear hardware bytes left over while Flash blocked the CPU. */
+    __HAL_UART_CLEAR_OREFLAG(&UART_3_handle);
+    __HAL_UART_CLEAR_OREFLAG(&UART_2_handle);
+    CarVision_Invalidate(&vision);
+    gyro_valid=0;
+    My_Key_clear_events();
+    params_rebase=1;
+    params_pending=0;
+    menu_refresh=1;
+    __set_PRIMASK(mask);
+}
+
 void Car_Main(void)
 {
     unsigned i;                                    /* 双轮循环下标 */
 
     Car_Init(&car);                                /* 初始化控制对象 */
+    {
+        int loaded=CarParams_Load(&CarParams_FlashIO,&saved_params);
+        params_saved=loaded==1 && CarParams_Apply(&car,&saved_params);
+        menu.params_status=params_saved ? PARAMS_LOADED : (loaded==0 ? PARAMS_DEFAULTS : PARAMS_ERROR);
+    }
     NEUQ_Debug_init(); /* LCD/I2C drivers print through USART1 during startup. */
     CarVision_Init(&vision);                       /* 初始化视觉解析器 */
     My_Key_init();
@@ -848,6 +928,7 @@ void Car_Main(void)
     /* 控制和按键由 PIT 中断驱动，慢速外设分次在主循环推进。 */
     while (1)
     {
+        poll_params();
         My_Vofa_poll();                            /* 发送已排队的遥测数据 */
         poll_gyro();
         poll_menu();
