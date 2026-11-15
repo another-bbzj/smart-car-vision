@@ -1,84 +1,14 @@
 /*
- * ============================================================================
  * 文件名称：Car_PID.c
- * ============================================================================
- * 模块功能
- * ----------------------------------------------------------------------------
- * 本文件实现双轮速度闭环所用的两种纯算法 PID 控制器，不访问任何外设，
- * 也不直接输出 PWM。每个控制周期的调用关系如下：
- *
- *     Car_Core.c（控制周期任务）
- *         -> Car_Pid_update_dt() 或 Car_PidInc_update_dt()
- *         -> 得到带符号的 PWM 数值
- *         -> Car_Hardware.c 把该数值写入电机驱动。
- *
- * 本文件包含两种实现：
- *
- *   1. 位置式 PID（Car_Pid_*）
- *      输出 = P + I + D + 前馈。积分项在结构体中显式累加；比例项支持目标
- *      权重 beta；微分项对“测量值”求导并做一阶低通，因此目标突然变化时
- *      不会产生微分冲击；积分项自身带限幅，并采用条件积分抗饱和。
- *      当前 Car_Core.c 实际使用的就是这一种。
- *
- *   2. 增量式 PID（Car_PidInc_*）
- *      不直接计算绝对输出，而是计算本周期相对上一周期的输出增量 Δu，
- *      再累加到上一周期输出上：u[k] = u[k-1] + Δu[k]。
- *      各项定义、微分滤波、前馈、输出限幅和抗饱和策略都与位置式保持一致，
- *      便于两种算法互换、对比调试。
- *
- * 函数列表（按文件内出现顺序）
- * ----------------------------------------------------------------------------
- *   static uint8_t number(float x)
- *       —— 判断浮点数是否为有限值，过滤 NaN 和正负无穷。
- *   static float clip(float x, float limit)
- *       —— 把浮点数限制到 [-limit, +limit] 区间。
- *   void Car_Pid_reset(Car_Pid_Struct *p)
- *       —— 保留位置式 PID 的配置，清除动态历史与故障标志。
- *   uint8_t Car_Pid_init(Car_Pid_Struct *p, float kp, float ki, float kd,
- *                        float limit)
- *       —— 初始化位置式 PID，并校验增益和输出上限。
- *   uint8_t Car_Pid_configure(Car_Pid_Struct *p, float beta, float tau,
- *                             float fraction, float ks, float kv, float ka)
- *       —— 配置位置式 PID 的目标权重、微分滤波、积分限幅和前馈。
- *   float Car_Pid_update_dt(Car_Pid_Struct *p, float target, float measure,
- *                           float acceleration, float dt)
- *       —— 使用实际周期执行一次位置式 PID 计算。
- *   float Car_Pid_update(Car_Pid_Struct *p, float target, float measure)
- *       —— 固定 5 ms 周期的位置式 PID 兼容入口。
- *   void Car_PidInc_reset(Car_PidInc_Struct *p)
- *       —— 保留增量式 PID 的配置，清除动态历史与故障标志。
- *   uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki,
- *                           float kd, float limit)
- *       —— 初始化增量式 PID，并校验增益和输出上限。
- *   uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float tau,
- *                                float fraction, float ks, float kv, float ka)
- *       —— 配置增量式 PID 的目标权重、微分滤波、积分限幅和前馈。
- *   float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target,
- *                              float measure, float acceleration, float dt)
- *       —— 使用实际周期执行一次增量式 PID 计算。
- *   float Car_PidInc_update(Car_PidInc_Struct *p, float target, float measure)
- *       —— 固定 5 ms 周期的增量式 PID 兼容入口。
- *
- * 单位约定
- * ----------------------------------------------------------------------------
- *   目标转速 target、实测转速 measure：rpm；
- *   参考加速度 acceleration：rpm/s；
- *   控制周期 dt：秒；
- *   输出、前馈项和积分项：PWM 数值（NEUQ 库 PWM_MAX = 10000 对应 100%）。
- *
- * Ki / Kd 的离散约定
- * ----------------------------------------------------------------------------
- *   为兼容既有蓝牙调参工具，Ki、Kd 仍按 5 ms 周期标定：
- *       积分增量 = Ki * error * (dt / 0.005)
- *       微分项   = -Kd * 0.005 * d(measure) / dt
- *   实际周期不是 5 ms 时，上面两式会自动按实际周期缩放。
- *
- * 数值安全
- * ----------------------------------------------------------------------------
- *   所有输入和中间结果都会检查是否为有限值。一旦发现 NaN、正负无穷、
- *   参数越界或周期异常，控制器会锁存 fault 标志并返回 0，由 Car_Core.c
- *   据此转入故障保护状态。
- * ============================================================================
+ * 模块功能：双轮速度闭环的 PID 算法库，纯计算，不访问外设也不直接输出 PWM。每个控制
+ *           周期接收参考转速、实测转速和参考加速度，输出带符号 PWM 数值：
+ *           Car_Core.c -> Car_Pid_update_dt() / Car_PidInc_update_dt() -> PWM -> 硬件层。
+ * 两种实现：位置式（Car_Pid_*）输出 = P + I + D + 前馈，比例项支持目标权重 beta，
+ *           微分对测量值求导并做一阶低通（目标突变不产生微分冲击），积分带限幅和条件
+ *           积分抗饱和，当前控制核心使用的就是这一种；增量式（Car_PidInc_*）计算相对
+ *           上一周期的输出增量再累加，滤波、前馈、限幅和抗饱和策略与位置式一致，
+ *           便于两种算法互换和对比调试。
+ * 运行位置：PIT 5ms 控制中断中由 Car_Core.c 调用。
  */
 
 #include "Car_PID.h"
