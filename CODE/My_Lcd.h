@@ -32,7 +32,7 @@ typedef enum {                          // 行的显示样式（字色 / 底色�
     UI_STYLE_GOOD,                      // 深绿字：正常 / 运行中
     UI_STYLE_WARN,                      // 红字：警告 / 请等待
     UI_STYLE_HINT,                      // 灰字：操作提示
-    UI_STYLE_NUM
+    UI_STYLE_NUM                        // 样式个数，用于越界检查，不显示
 } UI_Style_Enum;
 
 void My_Lcd_init(void);                                                    // 初始化屏幕（白底）

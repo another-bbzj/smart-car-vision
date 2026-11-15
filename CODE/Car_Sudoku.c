@@ -9,10 +9,16 @@
 #include "Car_Race.h"
 #include <string.h>
 
+/* 回溯搜索的工作区，每次求解在栈上新建，不跨调用保留。 */
 typedef struct {
-    uint8_t board[36], row[6], col[6], box[6], answer[36], solutions;
-    unsigned nodes;
-    uint8_t exhausted;
+    uint8_t board[36];  /* 当前棋盘：0 表示空格，1..6 为已填数字 */
+    uint8_t row[6];     /* 每行已用数字位图，bit1..bit6 对应数字 1..6 */
+    uint8_t col[6];     /* 每列已用数字位图 */
+    uint8_t box[6];     /* 每个 2x3 小宫已用数字位图 */
+    uint8_t answer[36]; /* 找到的第一个完整解 */
+    uint8_t solutions;  /* 已找到的解数，达到 2 即停止搜索 */
+    unsigned nodes;     /* 搜索节点计数，用于上限保护 */
+    uint8_t exhausted;  /* 1 表示节点数超限，结果不可信 */
 } Search;
 
 /* 函数名称：box_at

@@ -24,7 +24,13 @@ static const char *const gain_names[] = {"Kp", "Ki", "Kd", "Save parameters"};
 static const char *const conditions[] = {"Ready", "Stop / clear fault first", "Wheels moving",
     "Preparing result", "Waiting for valid road", "Restart vision with --hello"};
 static const char *const phases[] = {"Track","Gap","Bypass","Red stop","Finish","Fault"};
-enum { FB_NONE, FB_APPLIED, FB_STOP, FB_INVALID };
+/* PID 应用结果反馈，显示在编辑页底部提示行。 */
+enum {
+    FB_NONE,    /* 本次没有尝试应用 */
+    FB_APPLIED, /* 增益已写入该轮 PID */
+    FB_STOP,    /* 车辆未停车，拒绝应用 */
+    FB_INVALID  /* 增益非法，Car_SetPid 返回 2 */
+};
 
 /* 函数名称：CarMenu_StartCondition
  * 函数功能：判断“开始比赛”此刻是否可用：要求 STOP、车轮静止、没有待处理结果、视觉观测新鲜且曲率有效、置信度不低于 0.35，并区分是否为新的视觉会话。

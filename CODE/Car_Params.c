@@ -11,13 +11,15 @@
 #include <math.h>
 #include <string.h>
 
-#define PARAM_MAGIC 0x50494431U
-#define PARAM_COMMIT 0x434f4d54U
+#define PARAM_MAGIC 0x50494431U  /* "PID1" 小端魔数，用于识别本模块写下的记录 */
+#define PARAM_COMMIT 0x434f4d54U /* "COMT" 提交字：最后写入，存在才认为记录完整 */
+/* 一次 Flash 参数扫描的结果，只在 CarParams_Load/Save 内部使用。 */
 typedef struct {
-    uint32_t used[2], sequence;
-    unsigned bank;
-    int found;
-    CarParams params;
+    uint32_t used[2];  /* 每个 bank 已写到的字节偏移，新记录从这里开始追加 */
+    uint32_t sequence; /* 已找到的最新记录序号，用于比较新旧 */
+    unsigned bank;     /* 最新有效记录所在的 bank（0 或 1） */
+    int found;         /* 1 表示至少找到一条有效记录 */
+    CarParams params;  /* 最新有效记录中的 6 个增益 */
 } Scan;
 
 /* 函数名称：valid

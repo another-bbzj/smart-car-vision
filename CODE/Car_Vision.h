@@ -25,10 +25,10 @@
  * ============================================================================
  */
 
-#define CAR_VISION_MAX_PAYLOAD   32U
-#define CAR_VISION_MAX_FRAME     (16U + CAR_VISION_MAX_PAYLOAD)
-#define CAR_VISION_FRAME_GAP_MS  50U
-#define CAR_VISION_MAX_AGE_MS    200U
+#define CAR_VISION_MAX_PAYLOAD   32U                            /* 单帧负载最大字节数；当前实际最大 16（道路观测） */
+#define CAR_VISION_MAX_FRAME     (16U + CAR_VISION_MAX_PAYLOAD) /* 完整帧最大长度：固定开销 16 + 负载 */
+#define CAR_VISION_FRAME_GAP_MS  50U                            /* 帧内字节间隔超过 50 ms 丢弃半帧，重新寻找帧头 */
+#define CAR_VISION_MAX_AGE_MS    200U                           /* 道路观测超过 200 ms 未更新即判过期，不用于决策 */
 
 /*
  * 道路观测有效位掩码，可按位组合；

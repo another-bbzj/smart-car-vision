@@ -87,7 +87,7 @@ typedef struct
 
     /* ---------- 状态与协议字段 ---------- */
     uint8_t state;           /* 整车状态，取值见上方 CAR_STOP/CAR_RUN/CAR_FAULT */
-    uint8_t autonomous;      /* Local start button owns motion until stop or fault. */
+    uint8_t autonomous;      /* 1 表示本地按键/比赛状态机接管运动，直到停车或故障 */
     uint8_t fault;           /* 故障码，取值见上方 CAR_*_FAULT */
     uint8_t result;          /* 最近一条命令或帧的处理结果 */
 
