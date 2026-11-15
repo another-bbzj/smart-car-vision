@@ -1,6 +1,11 @@
 #include "Car_ParamsFlash.h"
 #include "stm32f4xx_hal.h"
 
+/* 函数名称：flash_read
+ * 函数功能：从参数 bank（扇区 6/7）的指定偏移读出 16 个 32 位字，带 bank、对齐和越界检查。
+ * 参数说明：ctx —— 未使用；bank —— 0/1；off —— 字节偏移；words —— 输出 16 字。
+ * 返回参数：1 成功；0 参数越界。
+ */
 static int flash_read(void *ctx,unsigned bank,uint32_t off,uint32_t words[16]) {
     const volatile uint32_t *src;
     unsigned i;
@@ -10,6 +15,11 @@ static int flash_read(void *ctx,unsigned bank,uint32_t off,uint32_t words[16]) {
     for(i=0;i<16;i++) words[i]=src[i];
     return 1;
 }
+/* 函数名称：flash_erase
+ * 函数功能：擦除参数 bank 所在的 Flash 扇区（bank0 扇区 6、bank1 扇区 7），电压范围按 3.3V 板供电设置。
+ * 参数说明：ctx —— 未使用；bank —— 0/1。
+ * 返回参数：1 擦除成功；0 bank 非法或 HAL 失败。
+ */
 static int flash_erase(void *ctx,unsigned bank) {
     FLASH_EraseInitTypeDef request={0};
     uint32_t failed;
@@ -21,6 +31,11 @@ static int flash_erase(void *ctx,unsigned bank) {
     request.VoltageRange=FLASH_VOLTAGE_RANGE_3; /* Board supply 3.3 V. */
     return HAL_FLASHEx_Erase(&request,&failed)==HAL_OK;
 }
+/* 函数名称：flash_program
+ * 函数功能：向参数 bank 的 4 字节对齐偏移编程一个 32 位字，带越界检查。
+ * 参数说明：ctx —— 未使用；bank —— 0/1；off —— 字节偏移；word —— 待写入字。
+ * 返回参数：1 成功；0 越界或 HAL 失败。
+ */
 static int flash_program(void *ctx,unsigned bank,uint32_t off,uint32_t word) {
     (void)ctx;
     if(bank>1 || off%4 || off>=CAR_PARAMS_FLASH_SECTOR_BYTES) return 0;
@@ -29,6 +44,12 @@ static int flash_program(void *ctx,unsigned bank,uint32_t off,uint32_t word) {
 }
 const CarParamsIO CarParams_FlashIO={0,CAR_PARAMS_FLASH_SECTOR_BYTES,flash_read,flash_erase,flash_program};
 
+/* 函数名称：CarParams_FlashSave
+ * 函数功能：停车保存参数的硬件入口：解锁 Flash、清错误标志、关闭并复位数据缓存（防止读到缓存的旧参数）、执行追加写入、回读校验，最后恢复缓存并上锁。
+ * 参数说明：params —— 待保存参数。
+ * 返回参数：CarParams_Save 的结果；解锁或上锁失败返回 PARAMS_ERROR。
+ * 备注信息：必须在停车状态调用；擦写期间 CPU 停等，不能放在控制中断里执行。
+ */
 CarParamsStatus CarParams_FlashSave(const CarParams *params) {
     CarParamsStatus result;
     uint32_t cache=FLASH->ACR & FLASH_ACR_DCEN;

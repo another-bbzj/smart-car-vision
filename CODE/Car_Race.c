@@ -3,16 +3,31 @@
 #include <math.h>
 #include <string.h>
 
+/* 函数名称：limit
+ * 函数功能：把浮点量限制到 [-bound, +bound]，用于横摆角速度和转向修正的限幅。
+ * 参数说明：x —— 待限幅数值；bound —— 正数上限。
+ * 返回参数：限幅后的数值。
+ */
 static float limit(float x, float bound) {
     return fmaxf(-bound, fminf(bound, x));
 }
 
+/* 函数名称：Race_Start
+ * 函数功能：比赛开始前清零赛况：圈数置 1，里程、航向、相位、缺口/绕障去重标记全部归零，避免沿用上一场残留状态。
+ * 参数说明：r —— 赛况对象。
+ * 返回参数：无。
+ */
 void Race_Start(CarRace *r) {
     memset(r, 0, sizeof(*r));
     r->lap = 1;
     r->last_gap = r->last_action = -100.0f;
 }
 
+/* 函数名称：drive
+ * 函数功能：把巡线层给出的前进速度与横摆角速度换算成左右轮目标 rpm，并按 CAR_RPM_LIMIT 等比例限幅。
+ * 参数说明：v —— 前进速度（m/s）；omega —— 横摆角速度（rad/s）。
+ * 返回参数：RaceDrive 双轮 rpm。
+ */
 static RaceDrive drive(float v, float omega) {
     RaceDrive out;
     float factor = 60.0f / (6.2831853f * RACE_RADIUS_M);
@@ -28,6 +43,11 @@ static RaceDrive drive(float v, float omega) {
     return out;
 }
 
+/* 函数名称：enter
+ * 函数功能：切换比赛相位时记录进入点：里程、航向、绕障偏移、进入时刻和视觉清帧计数，供各相位判断距离与超时。
+ * 参数说明：r —— 赛况对象；phase —— 目标相位；now —— 当前毫秒时基。
+ * 返回参数：无。
+ */
 static void enter(CarRace *r, RacePhase phase, uint32_t now) {
     r->phase = phase;
     r->entry = r->distance;
@@ -37,6 +57,12 @@ static void enter(CarRace *r, RacePhase phase, uint32_t now) {
     r->clear_frames = 0;
 }
 
+/* 函数名称：Race_Step
+ * 函数功能：比赛状态机主步进：用编码器增量与陀螺仪融合更新里程/航向，识别蓝底缺口、黄块绕障、第二圈红牌停车和完赛，输出双轮目标转速；视觉丢失或周期异常直接进入 RACE_FAULT。
+ * 参数说明：r —— 赛况对象；o —— 视觉观测；dl/dr —— 左右轮增量距离；dt —— 控制周期（s）；gyro —— 陀螺仪 Z 轴角速度；gyro_ok —— 陀螺仪有效；stationary —— 车辆静止；now —— 毫秒时基。
+ * 返回参数：RaceDrive 双轮 rpm；故障、完赛或红牌等待时返回 0。
+ * 备注信息：每个控制周期调用一次；进入故障后不再输出，必须人工停车清除。
+ */
 RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
                     float dr, float dt, float gyro, uint8_t gyro_ok,
                     uint8_t stationary, uint32_t now) {

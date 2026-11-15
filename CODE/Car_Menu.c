@@ -14,6 +14,12 @@ static const char *const conditions[] = {"Ready", "Stop / clear fault first", "W
 static const char *const phases[] = {"Track","Gap","Bypass","Red stop","Finish","Fault"};
 enum { FB_NONE, FB_APPLIED, FB_STOP, FB_INVALID };
 
+/* 函数名称：CarMenu_StartCondition
+ * 函数功能：判断“开始比赛”此刻是否可用：要求 STOP、车轮静止、没有待处理结果、视觉观测新鲜且曲率有效、置信度不低于 0.35，并区分是否为新的视觉会话。
+ * 参数说明：car —— 控制对象；still —— 车轮静止标志；pending —— 有待处理完赛结果；road —— 最新视觉观测；previous_session —— 上一场使用的会话号。
+ * 返回参数：启动条件枚举（READY/STOP_FIRST/MOVING/RESULT/NO_ROAD/NEW_SESSION）。
+ * 备注信息：结果只用于菜单提示，真正启动仍由 CarMenu_Key 与 Car_StartRace 双重把关。
+ */
 StartCondition CarMenu_StartCondition(const Car_Core *car, uint8_t still, uint8_t pending,
                                       const CarVisionObservation *road, uint32_t previous_session)
 {
@@ -26,6 +32,11 @@ StartCondition CarMenu_StartCondition(const Car_Core *car, uint8_t still, uint8_
     return START_READY;
 }
 
+/* 函数名称：items
+ * 函数功能：按菜单组返回对应的条目名称表，供菜单逻辑与绘制共用同一份文案。
+ * 参数说明：group —— 菜单组（比赛/传感器/左轮 PID/右轮 PID）。
+ * 返回参数：条目名称数组指针。
+ */
 static const char *const *items(unsigned group)
 {
     if (group == MENU_RACE) return race_items;
@@ -33,6 +44,12 @@ static const char *const *items(unsigned group)
     return gain_names;
 }
 
+/* 函数名称：CarMenu_Key
+ * 函数功能：消费一个按键事件推进菜单状态机：移动/进入/返回光标；PID 页用 UP/DN 修改候选值；OK 应用 PID、请求保存参数或在比赛页返回启动动作。
+ * 参数说明：m —— 菜单对象；key —— 按键事件；car —— 控制对象；start —— 本次启动条件。
+ * 返回参数：MENU_IDLE / MENU_SAVE_PARAMS / MENU_LAUNCH。
+ * 备注信息：参数保存忙时忽略按键；应用 PID 需停车并通过 Car_SetPid 校验；保存只在车轮静止且无待处理结果时发起。
+ */
 MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCondition start)
 {
     uint8_t *cursor = m->depth == 0 ? &m->group : &m->item[m->group];
@@ -86,6 +103,11 @@ MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCon
     return MENU_IDLE;
 }
 
+/* 函数名称：CarMenu_ShowResult
+ * 函数功能：把菜单直接跳到“比赛 → 数独结果”页，用于完赛或结果更新时强制切到结果视图。
+ * 参数说明：m —— 菜单对象。
+ * 返回参数：无。
+ */
 void CarMenu_ShowResult(CarMenu *m)
 {
     m->depth = 2;
@@ -94,6 +116,12 @@ void CarMenu_ShowResult(CarMenu *m)
     m->feedback = FB_NONE;
 }
 
+/* 函数名称：CarMenu_DrawRow
+ * 函数功能：按菜单深度/分组/选中项和车辆快照生成第 row 行文本，交给 My_Lcd_print 显示；标题、选中、告警、编辑等样式由当前状态决定。
+ * 参数说明：v —— 视图快照；row —— 行号（0..UI_ROWS-1）；board —— 数独答案 36 格；result —— 求解状态。
+ * 返回参数：无。
+ * 备注信息：只读快照，不修改控制状态。
+ */
 void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], uint8_t result)
 {
     const CarMenu *m = &v->menu;

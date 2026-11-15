@@ -7,12 +7,28 @@ typedef struct {
     uint8_t exhausted;
 } Search;
 
+/* 函数名称：box_at
+ * 函数功能：把 6x6 棋盘的线性下标映射到 2 行 x 3 列的小宫格编号，供行列宫冲突位图使用。
+ * 参数说明：i —— 0..35 的格子下标。
+ * 返回参数：小宫格编号 0..5。
+ */
 static unsigned box_at(unsigned i) { return (i / 12) * 2 + (i % 6) / 3; }
+/* 函数名称：toggle
+ * 函数功能：在行、列、宫三个位图里同时置位或清除某个数字，用于回溯搜索时试填与撤销。
+ * 参数说明：s —— 搜索状态；i —— 格子下标；bit —— 数字位（1<<digit）。
+ * 返回参数：无。
+ */
 static void toggle(Search *s, unsigned i, unsigned bit) {
     s->row[i/6] ^= bit;
     s->col[i%6] ^= bit;
     s->box[box_at(i)] ^= bit;
 }
+/* 函数名称：search
+ * 函数功能：数独回溯求解主体：每步选候选数最少的空格试填，记录第一个解并统计解数；节点数超过 20000 置 exhausted 后退出。
+ * 参数说明：s —— 搜索状态。
+ * 返回参数：无。
+ * 备注信息：解数达到 2 即判定多解并停止；只在前台完赛结算时调用，不占控制中断。
+ */
 static void search(Search *s) {
     unsigned i, best = 36, choices = 0, smallest = 7, digit;
     if (++s->nodes > 20000U) { s->exhausted = 1; return; }
@@ -39,6 +55,11 @@ static void search(Search *s) {
         s->board[best] = 0;
     }
 }
+/* 函数名称：Race_SolveDetailed
+ * 函数功能：把视觉收到的四块 3x3 瓦片拼成 6x6 数独，先检查给定数字冲突，再回溯求解，返回唯一解或具体失败原因。
+ * 参数说明：tiles —— 四块瓦片（每块 9 格）；result —— 输出 36 格答案。
+ * 返回参数：SOLVED / INVALID / AMBIGUOUS / LIMIT。
+ */
 RaceSudokuStatus Race_SolveDetailed(const uint8_t tiles[4][9], uint8_t result[36]) {
     Search s;
     unsigned i;
@@ -63,6 +84,11 @@ RaceSudokuStatus Race_SolveDetailed(const uint8_t tiles[4][9], uint8_t result[36
     return SUDOKU_SOLVED;
 }
 
+/* 函数名称：Race_Solve
+ * 函数功能：Race_SolveDetailed 的布尔封装，只有唯一解时返回 1。
+ * 参数说明：tiles —— 四块瓦片；result —— 输出 36 格答案。
+ * 返回参数：1 唯一解；0 无解/多解/超限。
+ */
 int Race_Solve(const uint8_t tiles[4][9], uint8_t result[36]) {
     return Race_SolveDetailed(tiles, result) == SUDOKU_SOLVED;
 }

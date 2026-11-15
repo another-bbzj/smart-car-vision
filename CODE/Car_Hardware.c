@@ -140,6 +140,13 @@ static uint8_t copy_tiles(uint8_t tiles[4][9], uint32_t now)
     return mask;
 }
 
+/*
+ * 函数名称：finish_tick
+ * 函数功能：完赛结算：确认车辆已停在 STOP 且双轮接近静止满 100ms 后开始收瓦片，最多再等 1s 让最后一帧进入 FIFO，收齐四块即置 finish_ready 交给主循环求解。
+ * 参数说明：now —— 当前毫秒时基。
+ * 返回参数：无。
+ * 备注信息：在串口解析之后调用；等待期间保持停车，视觉会话不切换。
+ */
 static void finish_tick(uint32_t now)
 {
     uint8_t still;
@@ -188,6 +195,13 @@ static void poll_gyro(void)
     }
 }
 
+/*
+ * 函数名称：poll_menu
+ * 函数功能：菜单与 LCD 的前台刷新：每 120ms 关中断取一次车辆/PID/视觉/IMU/瓦片快照，再逐行调用 CarMenu_DrawRow 刷屏，避免在 PIT 中断里做显示。
+ * 参数说明：无。
+ * 返回参数：无。
+ * 备注信息：完赛待求解时先同步完成数独求解并跳到结果页；刷屏在临界区之外进行。
+ */
 static void poll_menu(void)
 {
     static MenuView view;
@@ -255,6 +269,13 @@ static void poll_menu(void)
     CarMenu_DrawRow(&view,row++,result_board,shown_result);
 }
 
+/*
+ * 函数名称：race_tick
+ * 函数功能：每 5ms 控制周期的比赛总调度：分频扫按键、停车优先处理、刷新启动条件、消费菜单事件；自动模式下调用 Race_Step 得到双轮转速并处理完赛/故障。
+ * 参数说明：l, r —— 本周期左右编码器增量；dt_us —— 实测控制周期（微秒）。
+ * 返回参数：无。
+ * 备注信息：由 PIT 中断调用；停车键优先于同周期的 OK 与手动启动，按键事件只在 STOP 下生效。
+ */
 static void race_tick(int32_t l, int32_t r, uint32_t dt_us)
 {
     static unsigned scan_ms, stop_release_ms;
@@ -864,6 +885,13 @@ static void poll_params(void)
     __set_PRIMASK(mask);
 }
 
+/*
+ * 函数名称：Car_Main
+ * 函数功能：上电入口与主循环：先装载 Flash 参数并初始化视觉/按键/UART/LCD/IMU/编码器/PWM，再启动 5ms PIT 控制中断；主循环只推进参数保存、遥测、陀螺仪和菜单等慢速任务。
+ * 参数说明：无。
+ * 返回参数：不返回。
+ * 备注信息：所有共享对象与外设就绪后才开 PIT；TIM5 时基初始化失败会由 Car_TickDt 触发时序故障。
+ */
 void Car_Main(void)
 {
     unsigned i;                                    /* 双轮循环下标 */

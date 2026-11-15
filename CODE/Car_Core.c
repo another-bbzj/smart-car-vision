@@ -219,6 +219,13 @@ void Car_Fault(Car_Core *c, uint8_t fault)
     c->parse_state = 0;           /* 丢弃未收完的蓝牙帧 */
 }
 
+/*
+ * 函数名称：Car_LocalStop
+ * 函数功能：本地停车入口：清空目标/参考/PID 输出并把状态机切回手动 STOP，同时清除故障码和半帧解析状态。
+ * 参数说明：c —— 控制对象。
+ * 返回参数：无。
+ * 备注信息：可在任意状态调用；停车后必须人工重新启动，不会自动恢复行驶。
+ */
 void Car_LocalStop(Car_Core *c)
 {
     reset_motion(c);
@@ -227,6 +234,13 @@ void Car_LocalStop(Car_Core *c)
     c->link_us = 0;
 }
 
+/*
+ * 函数名称：Car_StartRace
+ * 函数功能：比赛启动入口：仅在 STOP 状态下先做一次本地清场，再置自动标志并进入 RUN，其余状态一律拒绝。
+ * 参数说明：c —— 控制对象。
+ * 返回参数：1 启动成功；0 当前不在 STOP。
+ * 备注信息：自动模式下只接受赛车层下发的双轮目标，手动转速命令会被忽略。
+ */
 int Car_StartRace(Car_Core *c)
 {
     if (c->state != CAR_STOP) return 0;
@@ -236,6 +250,13 @@ int Car_StartRace(Car_Core *c)
     return 1;
 }
 
+/*
+ * 函数名称：Car_SetPid
+ * 函数功能：在停车状态下整体替换某一轮的 PID 参数：先在临时对象上建好并校验，成功后才写回，避免半更新。
+ * 参数说明：c —— 控制对象；wheel —— 轮号（0 左 / 1 右）；kp/ki/kd —— 新增益。
+ * 返回参数：0 成功；1 车辆不在 STOP；2 轮号越界或参数非法（NaN/负值/超量程）。
+ * 备注信息：输出限幅沿用 CAR_PWM_LIMIT；菜单在线调参和 Flash 参数装载都走这里。
+ */
 uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
 {
     Car_Pid_Struct next;
@@ -247,6 +268,13 @@ uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
     return 0;
 }
 
+/*
+ * 函数名称：Car_RaceWheels
+ * 函数功能：自动巡线写入双轮目标转速：只有自动 RUN 生效，先按 CAR_RPM_LIMIT 限幅再下发，双零则立即清规划停车，并刷新通信看门狗。
+ * 参数说明：c —— 控制对象；rpm —— 左/右轮目标转速（rpm）。
+ * 返回参数：无。
+ * 备注信息：手动模式下调用不产生任何效果。
+ */
 void Car_RaceWheels(Car_Core *c, const float rpm[2])
 {
     if (!c->autonomous || c->state != CAR_RUN) return;
