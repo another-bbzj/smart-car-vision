@@ -69,8 +69,7 @@ typedef struct
     uint16_t processing_age_ms;  /* 发送端报告的处理年龄，单位毫秒 */
     uint16_t valid_mask;         /* 有效位掩码，取值见 VISION_*_VALID */
 
-    /* 以下几何量仅在 valid_mask 对应位为 1 时有效。 */
-    float lateral_m;             /* 横向误差，单位米，左正 */
+    float lateral_m;             /* 横向误差，单位米，左正；仅 valid_mask 对应位为 1 时有效 */
     float heading_rad;           /* 航向误差，单位弧度，逆时针正 */
     float curvature_inv_m;       /* 曲率，单位 1/米 */
     float distance_m;            /* 元素距离，单位米 */
@@ -101,7 +100,6 @@ typedef struct
     uint8_t buffer[CAR_VISION_MAX_FRAME];
     uint8_t used;
 
-    /* 会话与序号状态。 */
     uint8_t session_valid;     /* 1 表示已绑定会话 */
     uint8_t have_sequence;     /* 1 表示已有可比较的业务序号 */
     uint8_t have_observation;  /* 1 表示已有道路观测，仍需另外检查时效 */
@@ -109,7 +107,6 @@ typedef struct
     /* 道路与数独消息共享的最近业务序号；HELLO 不推进它。 */
     uint16_t last_sequence;
 
-    /* 统计与时间。 */
     uint32_t last_byte_ms;     /* 最近一次收到字节的时间，单位毫秒 */
     uint32_t session;          /* 当前绑定的会话编号 */
     uint32_t accepted_frames;  /* 已接受帧数，含 HELLO */

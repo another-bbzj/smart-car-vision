@@ -31,9 +31,9 @@ typedef struct
     float acceleration_limit;   /* 参考加速度绝对值上限，单位 rpm/s */
     float jerk_limit;           /* 加加速度绝对值上限，单位 rpm/s² */
 
-    /* ---------- 阶段计时 ---------- */
-    float elapsed;              /* 当前阶段已用时间，单位秒 */
-    float duration;             /* 当前阶段总时间，单位秒 */
+   /*---------- 阶段计时 ----------*/ 
+    float elapsed;            ///< 当前阶段已用时间，单位秒 
+    float duration;           /* 当前阶段总时间，单位秒 */
 
     /* 阶段：
      *   0 保持目标；

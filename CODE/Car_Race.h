@@ -2,8 +2,7 @@
 #define CAR_RACE_H
 #include "Car_Vision.h"
 
-/* 赛道与车辆几何参数，须在实车上实测核对后再定稿。 */
-#define RACE_RADIUS_M        0.0325f             /* 车轮半径（65 mm 直径），里程积分用；以带载滚动半径为准 */
+#define RACE_RADIUS_M        0.0325f             /* 车轮半径（65 mm 直径），里程积分用；以带载滚动半径为准；须实车实测核对 */
 #define RACE_TRACK_M         0.173f              /* 左右轮中心距，差速换算和航向积分用 */
 #define RACE_LAP_M           55.061f             /* 单圈中心线长度，用于圈数判断和缺口进入窗口 */
 #define RACE_GAP_ENTRY_M     0.0f                /* 缺口进入的里程窗口；0 表示不按里程，只按视觉元素判定 */

@@ -42,32 +42,32 @@
  */
 typedef struct
 {
-    /* ---------- 增益与限幅（来源：Car_Pid_init 参数或蓝牙命令 4） ---------- */
-    float kp;             /* 比例增益，单位 PWM/rpm */
+    //-----------增益与限幅（来源：Car_Pid_init 参数或蓝牙命令 4）---------------
+    float kp;             /* 比例增益，单位 PWM/rpm；来源：Car_Pid_init 参数或蓝牙命令 4 */
     float ki;             /* 积分增益，沿用 5 ms 离散约定 */
     float kd;             /* 微分增益，沿用 5 ms 离散约定 */
     float output_limit;   /* 输出绝对值上限，单位 PWM */
 
-    /* ---------- 动态状态（由 update 维护） ---------- */
-    float integral;       /* 已累积的积分输出，单位 PWM，受 integral_limit 限制 */
+    //-----------动态状态（由 update 维护）---------------
+    float integral;       /* 已累积的积分输出，单位 PWM，受 integral_limit 限制；由 update 维护 */
     float last_measure;   /* 上一周期实测转速，单位 rpm，用于计算测量变化率 */
 
-    /* ---------- 配置（来源：Car_Pid_init 默认值或 configure 参数） ---------- */
-    float beta;             /* 比例项目标权重，范围 [0,1] */
+    //-----------配置（来源：Car_Pid_init 默认值或 configure 参数）---------------
+    float beta;             /* 比例项目标权重，范围 [0,1]；来源：Car_Pid_init 默认值或 configure 参数 */
     float derivative_tau_s; /* 微分滤波时间常数，单位秒 */
     float integral_limit;   /* 积分项绝对值上限，单位 PWM */
     float ks;               /* 静摩擦前馈，单位 PWM */
     float kv;               /* 速度前馈系数，单位 PWM/rpm */
     float ka;               /* 加速度前馈系数，单位 PWM/(rpm/s) */
 
-    /* ---------- 调试/遥测字段（由 update 写入） ---------- */
-    float derivative;   /* 滤波后的测量变化率，单位 rpm/s */
+    //-----------调试/遥测字段（由 update 写入）---------------
+    float derivative;   /* 滤波后的测量变化率，单位 rpm/s；由 update 写入 */
     float p_term;       /* 本周期比例项输出，单位 PWM */
     float d_term;       /* 本周期微分项输出，单位 PWM */
     float ff_term;      /* 本周期前馈项输出，单位 PWM */
     float last_output;  /* 最近一次限幅后的输出，单位 PWM */
 
-    /* ---------- 状态标志 ---------- */
+    //-----------状态标志---------------
     uint8_t started;    /* 1 表示已有上一周期测量值，可以计算微分 */
     uint8_t fault;      /* 1 表示数值异常已锁存故障，update 将返回 0 */
     uint8_t saturated;  /* 1 表示最近一次输出被限幅 */
@@ -147,14 +147,14 @@ float Car_Pid_update(Car_Pid_Struct *p, float target, float measure);
  */
 typedef struct
 {
-    /* ---------- 增益与限幅（来源：Car_PidInc_init 参数或本地默认值） ---------- */
-    float kp;             /* 比例增益，单位 PWM/rpm */
+    //-----------增益与限幅（来源：Car_PidInc_init 参数或本地默认值）---------------
+    float kp;             /* 比例增益，单位 PWM/rpm；来源：Car_PidInc_init 参数或本地默认值 */
     float ki;             /* 积分增益，沿用 5 ms 离散约定 */
     float kd;             /* 微分增益，沿用 5 ms 离散约定 */
     float output_limit;   /* 输出绝对值上限，单位 PWM */
 
-    /* ---------- 动态状态（由 update 维护） ---------- */
-    float integral;         /* 已累积的积分输出，单位 PWM，受 integral_limit 限制 */
+    //-----------动态状态（由 update 维护）---------------
+    float integral;         /* 已累积的积分输出，单位 PWM，受 integral_limit 限制；由 update 维护 */
     float last_measure;     /* 上一周期实测转速，单位 rpm，用于计算测量变化率 */
     float last_output;      /* 上一周期限幅后的执行器输出，单位 PWM */
     float unclamped_output; /* 上一周期未限幅的累加值 u[k-1]，单位 PWM */
@@ -162,22 +162,22 @@ typedef struct
     float last_d_term;      /* 上一周期微分项值，单位 PWM，用于求 ΔD */
     float last_ff_term;     /* 上一周期前馈项值，单位 PWM，用于求 ΔFF */
 
-    /* ---------- 配置（来源：Car_PidInc_init 默认值或 configure 参数） ---------- */
-    float beta;             /* 比例项目标权重，范围 [0,1] */
+    //-----------配置（来源：Car_PidInc_init 默认值或 configure 参数）---------------
+    float beta;             /* 比例项目标权重，范围 [0,1]；来源：Car_PidInc_init 默认值或 configure 参数 */
     float derivative_tau_s; /* 微分滤波时间常数，单位秒 */
     float integral_limit;   /* 积分项绝对值上限，单位 PWM */
     float ks;               /* 静摩擦前馈，单位 PWM */
     float kv;               /* 速度前馈系数，单位 PWM/rpm */
     float ka;               /* 加速度前馈系数，单位 PWM/(rpm/s) */
 
-    /* ---------- 调试/遥测字段（由 update 写入） ---------- */
-    float derivative;   /* 滤波后的测量变化率，单位 rpm/s */
+    //-----------调试/遥测字段（由 update 写入）---------------
+    float derivative;   /* 滤波后的测量变化率，单位 rpm/s；由 update 写入 */
     float p_term;       /* 本周期比例项值，单位 PWM */
     float d_term;       /* 本周期微分项值，单位 PWM */
     float ff_term;      /* 本周期前馈项值，单位 PWM */
     float delta;        /* 本周期输出增量 Δu，单位 PWM */
 
-    /* ---------- 状态标志 ---------- */
+    //-----------状态标志---------------
     uint8_t started;    /* 1 表示已有上一周期测量值，可以计算微分 */
     uint8_t fault;      /* 1 表示数值异常已锁存故障，update 将返回 0 */
     uint8_t saturated;  /* 1 表示最近一次输出被限幅 */
