@@ -17,16 +17,27 @@
  *   - HELLO = 0：负载 0 字节、age 为 0；
  *   - TRACK = 1：负载 16 字节；
  *   - SUDOKU_TILE = 2：负载 10 字节；
+ *   - PATH = 3：负载 4 + 4N 字节，N 为路径点个数（0~16）；
+ *     负载格式：count:u8 | flags:u8 | speed_mmps:u16 |
+ *               N × (x_mm:i16, y_mm:i16)
+ *     坐标为车辆坐标系：x 向右、y 向前，原点为视觉参考点，单位毫米；
+ *     flags bit0 = 元素在左侧、bit1 = 元素在右侧、
+ *           bit2 = 环岛激活、bit3 = 十字激活。
  *   - 仅停车时允许 HELLO 绑定非零会话；
  *   - 本接口中的消息不能启动电机或写入 PWM。
  *
- * 固定开销 16 字节 = 帧头 2 + 元数据 12 + CRC 2，最大完整帧 48 字节；
- * 字节间隔超过 50 ms 丢弃半帧；道路观测年龄超过 200 ms 判为过期。
+ * 固定开销 16 字节 = 帧头 2 + 元数据 12 + CRC 2，最大完整帧 84 字节；
+ * 字节间隔超过 50 ms 丢弃半帧；道路/路径观测年龄超过 200 ms 判为过期。
  * ============================================================================
  */
 
-#define CAR_VISION_MAX_PAYLOAD   32U                            /* 单帧负载最大字节数；当前实际最大 16（道路观测） */
+#define CAR_VISION_MAX_PAYLOAD   68U                            /* 单帧负载最大字节数：PATH 帧 4 + 16×4 */
 #define CAR_VISION_MAX_FRAME     (16U + CAR_VISION_MAX_PAYLOAD) /* 完整帧最大长度：固定开销 16 + 负载 */
+#define CAR_VISION_PATH_POINTS   16U                            /* 单帧路径最多点数 */
+#define CAR_VISION_PATH_LEFT     1U                             /* flags bit0：元素在左侧 */
+#define CAR_VISION_PATH_RIGHT    2U                             /* flags bit1：元素在右侧 */
+#define CAR_VISION_PATH_RING     4U                             /* flags bit2：环岛激活 */
+#define CAR_VISION_PATH_CROSS    8U                             /* flags bit3：十字激活 */
 #define CAR_VISION_FRAME_GAP_MS  50U                            /* 帧内字节间隔超过 50 ms 丢弃半帧，重新寻找帧头 */
 #define CAR_VISION_MAX_AGE_MS    200U                           /* 道路观测超过 200 ms 未更新即判过期，不用于决策 */
 
@@ -92,6 +103,23 @@ typedef struct
 } CarVisionTile;
 
 /*
+ * 路径快照，来源：TYPE=3 PATH 帧。
+ * 坐标已换算成米，车辆坐标系：x 向右、y 向前。
+ */
+typedef struct
+{
+    uint32_t received_ms;        /* 本机解析该帧的时间，单位毫秒 */
+    uint32_t session;            /* 会话编号 */
+    uint16_t sequence;           /* 路径帧独立序号 */
+    uint16_t processing_age_ms;  /* 发送端报告的处理年龄，单位毫秒 */
+    uint8_t count;               /* 路径点个数，0~CAR_VISION_PATH_POINTS */
+    uint8_t flags;               /* 元素方向/相位标志，取值见 CAR_VISION_PATH_* */
+    float speed_limit_mps;       /* 视觉建议速度上限，单位 m/s，0 表示未提供 */
+    float xy_m[CAR_VISION_PATH_POINTS * 2U]; /* 交错存放 [x0,y0,x1,y1,...]，单位米 */
+    uint8_t valid;               /* 1 表示本会话缓存可用 */
+} CarVisionPath;
+
+/*
  * 视觉解析器状态。
  */
 typedef struct
@@ -103,9 +131,15 @@ typedef struct
     uint8_t session_valid;     /* 1 表示已绑定会话 */
     uint8_t have_sequence;     /* 1 表示已有可比较的业务序号 */
     uint8_t have_observation;  /* 1 表示已有道路观测，仍需另外检查时效 */
+    uint8_t have_path_sequence;/* 1 表示已有可比较的路径序号 */
+    uint8_t have_path;         /* 1 表示已有路径，仍需另外检查时效 */
 
-    /* 道路与数独消息共享的最近业务序号；HELLO 不推进它。 */
+    /* 道路与数独消息共享的最近业务序号；HELLO 与 PATH 不推进它。
+     * PATH 使用独立序号，避免同一帧同时发送道路与路径时互相判重。 */
     uint16_t last_sequence;
+
+    /* 路径帧独立序号，原因同上。 */
+    uint16_t last_path_sequence;
 
     uint32_t last_byte_ms;     /* 最近一次收到字节的时间，单位毫秒 */
     uint32_t session;          /* 当前绑定的会话编号 */
@@ -114,6 +148,7 @@ typedef struct
     uint32_t rejected_frames;  /* CRC 正确但业务字段不合法的帧数 */
 
     CarVisionObservation observation; /* 最近一份有效道路观测 */
+    CarVisionPath path;               /* 最近一份有效路径 */
 
     /* 四个数独块，按左上、右上、左下、右下缓存；
      * 同一索引的新数据覆盖旧值。 */
@@ -167,6 +202,18 @@ void CarVision_Feed(CarVision *v, uint8_t byte, uint32_t now_ms,
  */
 uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms,
                                  CarVisionObservation *out);
+
+/**
+ * @brief 复制通过时效检查的最新路径。
+ * @param v      非空解析器。
+ * @param now_ms 当前毫秒时间。
+ * @param out    接收副本的对象。
+ * @return 1 成功；0 表示 out 为 NULL、无路径或过期，out 保持原值。
+ * @note 路径与道路观测使用相同的 200 ms 时效规则，但序号独立。
+ *       返回有效路径不代表可以直接行驶：count 至少为 2 才能用于纯跟踪。
+ */
+uint8_t CarVision_GetPath(const CarVision *v, uint32_t now_ms,
+                          CarVisionPath *out);
 
 /**
  * @brief 复制索引 0~3 的数独块，不使用道路观测的 200 ms 时效规则。

@@ -1065,6 +1065,26 @@
               <FilePath>../CODE/Car_Core.c</FilePath>
             </File>
             <File>
+              <FileName>Car_Steer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/Car_Steer.c</FilePath>
+            </File>
+            <File>
+              <FileName>Car_Pursuit.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/Car_Pursuit.c</FilePath>
+            </File>
+            <File>
+              <FileName>Car_Ring.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/Car_Ring.c</FilePath>
+            </File>
+            <File>
+              <FileName>Car_Cross.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/Car_Cross.c</FilePath>
+            </File>
+            <File>
               <FileName>Car_Hardware.c</FileName>
               <FileType>1</FileType>
               <FilePath>../CODE/Car_Hardware.c</FilePath>

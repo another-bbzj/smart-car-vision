@@ -85,7 +85,8 @@ static void reset_motion(Car_Core *c)
         c->stall_us[i] = 0;                          /* 堵转计时清零 */
         c->direction_us[i] = 0;                      /* 方向异常计时清零 */
         c->slow_speed[i] = absolute(c->speed[i]);    /* 慢速滤波重新播种 */
-        Car_Pid_reset(&c->pid[i]);                   /* 清除速度环历史与故障 */
+        Car_Pid_reset(&c->pid[i]);                   /* 清除位置式速度环历史与故障 */
+        Car_PidInc_reset(&c->pid_inc[i]);            /* 清除增量式速度环历史与故障 */
     }
 }
 
@@ -135,6 +136,24 @@ void Car_Init(Car_Core *c)
                                CAR_FF_KA))
         {
             Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 配置失败立即进入故障 */
+        }
+
+        /* 增量式对象始终与位置式同步初始化，便于配置切换。 */
+        Car_PidInc_init(&c->pid_inc[i],
+                        CAR_DEFAULT_KP,
+                        CAR_DEFAULT_KI,
+                        CAR_DEFAULT_KD,
+                        CAR_PWM_LIMIT);
+
+        if (!Car_PidInc_configure(&c->pid_inc[i],
+                                  CAR_PID_SETPOINT_WEIGHT,
+                                  CAR_PID_D_TAU_S,
+                                  1.0f,
+                                  CAR_FF_KS,
+                                  CAR_FF_KV,
+                                  CAR_FF_KA))
+        {
+            Car_Fault(c, CAR_CONTROLLER_FAULT);
         }
     }
 }
@@ -207,11 +226,17 @@ int Car_StartRace(Car_Core *c)
 uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
 {
     Car_Pid_Struct next;
+    Car_PidInc_Struct next_inc;
     if (c->state != CAR_STOP) return 1;
     if (wheel > 1 || !Car_Pid_init(&next, kp, ki, kd, CAR_PWM_LIMIT) ||
         !Car_Pid_configure(&next, CAR_PID_SETPOINT_WEIGHT, CAR_PID_D_TAU_S,
                            1.0f, CAR_FF_KS, CAR_FF_KV, CAR_FF_KA)) return 2;
+    if (!Car_PidInc_init(&next_inc, kp, ki, kd, CAR_PWM_LIMIT) ||
+        !Car_PidInc_configure(&next_inc, CAR_PID_SETPOINT_WEIGHT,
+                              CAR_PID_D_TAU_S, 1.0f, CAR_FF_KS,
+                              CAR_FF_KV, CAR_FF_KA)) return 2;
     c->pid[wheel] = next;
+    c->pid_inc[wheel] = next_inc;
     return 0;
 }
 
@@ -612,18 +637,31 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
         {
             c->output[i] = 0.0f;
             Car_Pid_reset(&c->pid[i]);
+            Car_PidInc_reset(&c->pid_inc[i]);
         }
         else
         {
+#if CAR_SPEED_PID_INCREMENTAL
+            c->output[i] = Car_PidInc_update_dt(&c->pid_inc[i],
+                                                c->reference[i],
+                                                c->speed[i],
+                                                c->profile.acceleration[i],
+                                                dt);
+#else
             c->output[i] = Car_Pid_update_dt(&c->pid[i],
                                              c->reference[i],
                                              c->speed[i],
                                              c->profile.acceleration[i],
                                              dt);
+#endif
         }
 
         /* PID 内部检测到数值异常时会锁存 fault，这里立即转入整车故障。 */
+#if CAR_SPEED_PID_INCREMENTAL
+        if (c->pid_inc[i].fault)
+#else
         if (c->pid[i].fault)
+#endif
         {
             Car_Fault(c, CAR_CONTROLLER_FAULT);
             continue;

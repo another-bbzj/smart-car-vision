@@ -64,7 +64,8 @@ enum
 typedef struct
 {
     //-----------双轮控制状态---------------
-    Car_Pid_Struct pid[2];   /* 左右轮速度 PID，下标 0 左、1 右 */
+    Car_Pid_Struct pid[2];   /* 左右轮位置式速度 PID，下标 0 左、1 右 */
+    Car_PidInc_Struct pid_inc[2]; /* 左右轮增量式速度 PID；CAR_SPEED_PID_INCREMENTAL=1 时使用 */
     float target[2];         /* 目标转速，单位 rpm，下标 0 左、1 右 */
     float reference[2];      /* 规划器输出的参考转速，单位 rpm，下标 0 左、1 右 */
     float speed[2];          /* 滤波后的实测转速，单位 rpm，下标 0 左、1 右 */

@@ -5,7 +5,8 @@
  *           通过后再做版本、会话、序号和业务字段校验，把有效帧提交为道路观测或数独
  *           瓦片缓存；非法帧只增加 rejected 计数，不覆盖上一份有效观测。
  * 帧类型：0 = HELLO（声明新会话）；1 = 道路观测（曲率、元素、距离、置信度）；
- *           2 = 数独子块。CRC16 初值 0xFFFF、多项式 0x1021，覆盖版本字节到负载末尾。
+ *           2 = 数独子块；3 = 路径点（车辆坐标系，单位毫米）。
+ *           CRC16 初值 0xFFFF、多项式 0x1021，覆盖版本字节到负载末尾。
  * 运行位置：串口接收中断只把字节写入 FIFO；组帧、CRC 和业务校验在 PIT 中断中推进。
  */
 
@@ -137,6 +138,7 @@ void CarVision_Invalidate(CarVision *v)
 {
     v->used = 0;                  /* 清空未消费字节 */
     v->have_observation = 0;      /* 道路观测失效 */
+    v->have_path = 0;             /* 路径同样失效，避免继续使用旧点 */
     /* Collected tiles are persistent evidence for this session. Only a new
      * HELLO clears them; a later UART fault must not erase an earlier tile. */
 }
@@ -215,6 +217,8 @@ static void accept(CarVision *v, uint32_t now, uint8_t allow_hello)
         {
             v->have_observation = 0;                /* 旧观测失效 */
             v->have_sequence = 0;                   /* 旧序号失效 */
+            v->have_path = 0;                       /* 旧路径失效 */
+            v->have_path_sequence = 0;              /* 路径序号重新开始 */
 
             for (i = 0; i < 4; i++)
             {
@@ -234,6 +238,79 @@ static void accept(CarVision *v, uint32_t now, uint8_t allow_hello)
         age > CAR_VISION_MAX_AGE_MS)
     {
         v->rejected_frames++;
+        return;
+    }
+
+    /*
+     * PATH 帧使用独立序号：同一相机帧可能同时发送道路观测和路径，
+     * 若共用序号，后一帧会被误判为重复帧。
+     */
+    if (type == 3U)
+    {
+        CarVisionPath path;                         /* 临时路径对象 */
+        uint32_t exp_len;                           /* 期望负载长度 */
+        uint8_t count;                              /* 路径点个数 */
+        uint8_t flags;                              /* 元素方向/相位标志 */
+        uint16_t speed;                             /* 建议速度，线上单位 mm/s */
+        uint16_t pdelta;                            /* 路径序号差值 */
+        unsigned k;                                 /* 路径点循环下标 */
+
+        if (len < 4U)
+        {
+            v->rejected_frames++;
+            return;
+        }
+
+        count = p[0];
+        flags = p[1];
+        speed = u16(p + 2);
+        exp_len = 4U + 4U * (uint32_t)count;
+
+        if (count == 0U || count > CAR_VISION_PATH_POINTS ||
+            len != exp_len || flags > 15U || speed > 5000U)
+        {
+            v->rejected_frames++;
+            return;
+        }
+
+        memset(&path, 0, sizeof(path));
+
+        for (k = 0; k < count; k++)
+        {
+            int32_t x = i16(p + 4U + 4U * k);       /* 车辆系横向，右正，mm */
+            int32_t y = i16(p + 6U + 4U * k);       /* 车辆系前向，前正，mm */
+
+            if (x < -20000 || x > 20000 || y < -20000 || y > 20000)
+            {
+                v->rejected_frames++;
+                return;
+            }
+
+            path.xy_m[2U * k] = (float)x / 1000.0f;
+            path.xy_m[2U * k + 1U] = (float)y / 1000.0f;
+        }
+
+        pdelta = (uint16_t)(seq - v->last_path_sequence);
+        if (v->have_path_sequence && (pdelta == 0U || pdelta >= 0x8000U))
+        {
+            v->rejected_frames++;
+            return;
+        }
+
+        path.received_ms = now;
+        path.session = session;
+        path.sequence = seq;
+        path.processing_age_ms = age;
+        path.count = count;
+        path.flags = flags;
+        path.speed_limit_mps = (float)speed / 1000.0f;
+        path.valid = 1;
+
+        v->path = path;
+        v->have_path = 1;
+        v->last_path_sequence = seq;
+        v->have_path_sequence = 1;
+        v->accepted_frames++;
         return;
     }
 
@@ -490,6 +567,38 @@ uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms,
     }
 
     *out = v->observation;    /* 复制一致快照 */
+
+    return 1;
+}
+
+/*
+ * 函数名称：CarVision_GetPath
+ * 函数功能：复制路径快照，并检查数据是否过期。
+ * 参数说明：v      —— 视觉解析器对象，只读；
+ *           now_ms —— 当前毫秒时间；
+ *           out    —— 接收副本的对象，不能为空。
+ * 返回参数：1 有可用且未过期的路径；0 无数据或已过期，失败时不改写 out。
+ * 备注信息：时效规则与道路观测相同；路径点个数仍需调用者检查。
+ */
+uint8_t CarVision_GetPath(const CarVision *v, uint32_t now_ms,
+                          CarVisionPath *out)
+{
+    uint32_t age;             /* 本机收到路径后经过的时间，毫秒 */
+
+    if (out == NULL || !v->have_path)
+    {
+        return 0;
+    }
+
+    age = (uint32_t)(now_ms - v->path.received_ms);
+
+    if (age > CAR_VISION_MAX_AGE_MS ||
+        age > CAR_VISION_MAX_AGE_MS - v->path.processing_age_ms)
+    {
+        return 0;             /* 数据已过期 */
+    }
+
+    *out = v->path;           /* 复制一致快照 */
 
     return 1;
 }

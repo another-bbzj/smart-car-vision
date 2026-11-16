@@ -1,6 +1,9 @@
 #ifndef CAR_RACE_H
 #define CAR_RACE_H
 #include "Car_Vision.h"
+#include "Car_Pursuit.h"
+#include "Car_Ring.h"
+#include "Car_Cross.h"
 
 #define RACE_RADIUS_M        0.0325f             /* 车轮半径（65 mm 直径），里程积分用；以带载滚动半径为准；须实车实测核对 */
 #define RACE_TRACK_M         0.173f              /* 左右轮中心距，差速换算和航向积分用 */
@@ -42,13 +45,19 @@ typedef struct {
     uint8_t held_element;   /* 已处理过的元素，防止同一元素重复触发 */
     uint8_t have_sequence;  /* 1 表示 last_sequence 有效 */
     uint8_t timing_stop;    /* 红牌相位中是否已开始计静止时间 */
+
+    CarPursuit pursuit;     /* 视觉路径纯跟踪，移植自 HFK alongLine() */
+    CarRing ring;           /* 环岛状态机，移植自 HFK 四相位环岛逻辑 */
+    CarCross cross;         /* 十字状态机，移植自 HFK 两相位十字逻辑 */
 } CarRace;
 
 /* Race_Step 的输出：左右轮目标转速，由 Car_RaceWheels 下发。 */
 typedef struct { float rpm[2]; } RaceDrive;
 
 void Race_Start(CarRace *r);
-RaceDrive Race_Step(CarRace *r, const CarVisionObservation *obs, float left_m,
+/* path 可为 NULL；有效路径优先用于巡线转向，否则退回视觉曲率。 */
+RaceDrive Race_Step(CarRace *r, const CarVisionObservation *obs,
+                    const CarVisionPath *path, float left_m,
                     float right_m, float dt, float gyro_rad_s, uint8_t gyro_ok,
                     uint8_t stationary, uint32_t now_ms);
 /* 四块瓦片按阅读顺序排列；只接受 2x3 宫格下唯一解。 */

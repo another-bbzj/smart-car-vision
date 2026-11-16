@@ -58,4 +58,38 @@
 #define CAR_DEFAULT_KP         2.0f                    /* 上电默认比例增益；Flash 无有效参数时使用 */
 #define CAR_DEFAULT_KI         0.12f                   /* 上电默认积分增益 */
 #define CAR_DEFAULT_KD         0.0f                    /* 上电默认微分增益 */
+
+/* ---------------------------- 纯跟踪与虚拟舵机 ---------------------------- */
+/* 以下默认值来自 HFK_STC32G144K 的纯跟踪/舵机链，按 W 差速车参数换算；
+ * 换底盘或重新标定后须整组复核。 */
+#define CAR_SPEED_PID_INCREMENTAL 0                    /* 1 表示速度环改用增量式 PID；0 保持位置式 */
+#define CAR_PURSUIT_WHEELBASE_M 0.152f                 /* 虚拟轴距，单位米，视觉纯跟踪使用同一值 */
+#define CAR_PURSUIT_TRACK_M     0.173f                 /* 左右轮中心距，单位米，与 RACE_TRACK_M 保持一致 */
+#define CAR_PURSUIT_WHEEL_RADIUS_M 0.0325f             /* 车轮半径，单位米，与 RACE_RADIUS_M 保持一致 */
+#define CAR_PURSUIT_LOOKAHEAD_MIN_M 0.20f              /* 最小预瞄距离，单位米 */
+#define CAR_PURSUIT_LOOKAHEAD_PER_MPS 0.35f            /* 每 1 m/s 增加的预瞄距离，单位秒 */
+#define CAR_PURSUIT_LOOKAHEAD_MAX_M 1.20f              /* 最大预瞄距离，单位米 */
+#define CAR_PURSUIT_STEER_LIMIT_RAD 0.52f              /* 虚拟舵机转角上限，约 30 度 */
+#define CAR_PURSUIT_STEER_GAIN  1.0f                   /* 虚拟舵机转角增益 */
+#define CAR_PURSUIT_STEER_RATE_RAD_S 6.0f              /* 虚拟舵机转角速率上限，单位 rad/s */
+#define CAR_PURSUIT_LAT_ACCEL_MPS2 0.55f               /* 横向加速度上限，单位 m/s²，与巡线曲率限速一致 */
+#define CAR_PURSUIT_SPEED_LIMIT_MPS 1.20f              /* 纯跟踪输出的绝对速度上限，单位 m/s */
+#define CAR_PURSUIT_PWM_CENTER_US 1500.0f              /* 虚拟舵机中位脉宽，仅阿克曼底盘使用 */
+#define CAR_PURSUIT_PWM_PER_RAD_US 500.0f              /* 虚拟舵机每弧度脉宽，仅阿克曼底盘使用 */
+
+/* ------------------------------- 环岛 / 十字 ------------------------------ */
+#define CAR_RING_CONFIRM_FRAMES   2U                   /* 连续识别到环岛元素的帧数，防止单帧误检 */
+#define CAR_RING_MIN_CONFIDENCE   0.50f                /* 进入环岛所需的最低置信度 */
+#define CAR_RING_TRIGGER_M        0.80f                /* 保留：按元素距离触发时使用的阈值，单位米 */
+#define CAR_RING_ENTER_M          0.30f                /* 进入过渡区里程，单位米 */
+#define CAR_RING_INSIDE_M         1.20f                /* 环岛内侧持续里程，单位米 */
+#define CAR_RING_EXIT_M           0.40f                /* 驶出过渡里程，单位米 */
+#define CAR_RING_RADIUS_M         0.45f                /* 环岛等效半径，决定转向偏置，单位米 */
+#define CAR_RING_SPEED_SCALE      0.80f                /* 环岛内速度缩放系数 */
+#define CAR_RING_TIMEOUT_MS       12000U               /* 环岛相位超时，单位毫秒 */
+#define CAR_CROSS_CONFIRM_FRAMES  2U                   /* 连续识别到十字元素的帧数 */
+#define CAR_CROSS_MIN_CONFIDENCE  0.50f                /* 进入十字所需的最低置信度 */
+#define CAR_CROSS_HOLD_M          0.60f                /* 十字内强制直行里程，单位米 */
+#define CAR_CROSS_SPEED_SCALE     0.80f                /* 十字内速度缩放系数 */
+#define CAR_CROSS_TIMEOUT_MS      5000U                /* 十字相位超时，单位毫秒 */
 #endif

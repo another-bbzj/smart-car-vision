@@ -28,10 +28,33 @@ static float limit(float x, float bound) {
  * 参数说明：r —— 赛况对象。
  * 返回参数：无。
  */
+static CarPursuitConfig pursuit_config(void) {
+    CarPursuitConfig c;
+    c.wheelbase_m = CAR_PURSUIT_WHEELBASE_M;
+    c.track_m = CAR_PURSUIT_TRACK_M;
+    c.wheel_radius_m = CAR_PURSUIT_WHEEL_RADIUS_M;
+    c.lookahead_min_m = CAR_PURSUIT_LOOKAHEAD_MIN_M;
+    c.lookahead_per_mps = CAR_PURSUIT_LOOKAHEAD_PER_MPS;
+    c.lookahead_max_m = CAR_PURSUIT_LOOKAHEAD_MAX_M;
+    c.steer_limit_rad = CAR_PURSUIT_STEER_LIMIT_RAD;
+    c.steer_gain = CAR_PURSUIT_STEER_GAIN;
+    c.steer_rate_rad_s = CAR_PURSUIT_STEER_RATE_RAD_S;
+    c.lateral_accel_limit_mps2 = CAR_PURSUIT_LAT_ACCEL_MPS2;
+    c.speed_limit_mps = CAR_PURSUIT_SPEED_LIMIT_MPS;
+    c.pwm_center_us = CAR_PURSUIT_PWM_CENTER_US;
+    c.pwm_per_rad_us = CAR_PURSUIT_PWM_PER_RAD_US;
+    return c;
+}
+
 void Race_Start(CarRace *r) {
+    CarPursuitConfig cfg = pursuit_config();
     memset(r, 0, sizeof(*r));
     r->lap = 1;
     r->last_gap = r->last_action = -100.0f;
+    /* 纯跟踪配置非法时 CarPursuit_Init 置 fault，Race_Step 会退回视觉曲率。 */
+    (void)CarPursuit_Init(&r->pursuit, &cfg);
+    CarRing_Reset(&r->ring);
+    CarCross_Reset(&r->cross);
 }
 
 /* 函数名称：drive
@@ -69,12 +92,16 @@ static void enter(CarRace *r, RacePhase phase, uint32_t now) {
 }
 
 /* 函数名称：Race_Step
- * 函数功能：比赛状态机主步进：用编码器增量与陀螺仪融合更新里程/航向，识别蓝底缺口、黄块绕障、第二圈红牌停车和完赛，输出双轮目标转速；视觉丢失或周期异常直接进入 RACE_FAULT。
- * 参数说明：r —— 赛况对象；o —— 视觉观测；dl/dr —— 左右轮增量距离；dt —— 控制周期（s）；gyro —— 陀螺仪 Z 轴角速度；gyro_ok —— 陀螺仪有效；stationary —— 车辆静止；now —— 毫秒时基。
+ * 函数功能：比赛状态机主步进：用编码器增量与陀螺仪融合更新里程/航向，识别蓝底缺口、
+   黄块绕障、第二圈红牌停车和完赛，输出双轮目标转速；视觉丢失或周期异常直接进入 RACE_FAULT。
+ * 参数说明：r —— 赛况对象；o —— 视觉观测；dl/dr —— 左右轮增量距离；
+            dt —— 控制周期（s）；gyro —— 陀螺仪 Z 轴角速度；gyro_ok —— 陀螺仪有效；
+            stationary —— 车辆静止；now —— 毫秒时基。
  * 返回参数：RaceDrive 双轮 rpm；故障、完赛或红牌等待时返回 0。
  * 备注信息：每个控制周期调用一次；进入故障后不再输出，必须人工停车清除。
  */
-RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
+RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o,
+                    const CarVisionPath *path, float dl,
                     float dr, float dt, float gyro, uint8_t gyro_ok,
                     uint8_t stationary, uint32_t now) {
     RaceDrive stop = {{0,0}};
@@ -82,6 +109,13 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     float dyaw = (dr - dl) / RACE_TRACK_M;
     float s, curve, speed, heading, target, error, along;
     int road, new_frame, in_window;
+    int8_t side_hint = 0;
+    CarRingOutput ring = {0};
+    CarCrossOutput cross = {0};
+    uint8_t has_pursuit = 0;
+
+    ring.speed_scale = 1.0f;
+    cross.speed_scale = 1.0f;
     /*
      * 已完赛或已故障：直接返回双零转速，不再改动赛况；
      * 上层看到 RACE_FINISHED 会停车结算，看到 RACE_FAULT 会锁存故障。
@@ -127,6 +161,25 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
      * 不可用时巡线只允许走缺口分支，其余情况直接故障，不按旧曲率盲走。
      */
     road = (o->valid_mask & VISION_CURVATURE_VALID) && o->confidence >= 0.35f;
+    /*
+     * 环岛/十字状态机：只有巡线相位运行，其余相位重置，避免绕障或缺口后
+     * 带着旧相位回到巡线。方向提示来自路径帧 flags；没有路径时由横向偏差推断。
+     */
+    if (r->phase == RACE_TRACK) {
+        if (path != NULL && path->valid) {
+            if (path->flags & CAR_VISION_PATH_LEFT) side_hint = 1;
+            else if (path->flags & CAR_VISION_PATH_RIGHT) side_hint = -1;
+        }
+        ring = CarRing_Step(&r->ring, o, r->distance, now, side_hint);
+        cross = CarCross_Step(&r->cross, o, r->distance, now);
+        if (ring.fault || cross.fault) {
+            r->phase = RACE_FAULT;
+            return stop;
+        }
+    } else {
+        CarRing_Reset(&r->ring);
+        CarCross_Reset(&r->cross);
+    }
     /*
      * 元素解锁：出现新元素、且已离开上次动作点超过 0.8 m 时清除去重标记，
      * 允许同一元素在下一个位置或下一圈被重新识别。
@@ -256,16 +309,42 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
      */
     if (!road) { r->phase = RACE_FAULT; return stop; }
     /*
-     * 曲率限幅到 ±15 1/m，过滤视觉异常值；
-     * |曲率|<1.75 时累计直行里程，供缺口入口判定使用。
+     * 曲率来源优先级：十字/环岛状态机 > 视觉路径纯跟踪 > 视觉曲率。
+     * 先用视觉曲率算出一个临时速度，供纯跟踪的动态预瞄使用；
+     * 纯跟踪成功后再用它的曲率重算速度。
      */
     curve = limit(o->curvature_inv_m, 15.0f);
-    r->straight_m = fabsf(curve) < 1.75f ? r->straight_m + fmaxf(0,ds) : 0;
+    speed = fminf(r->lap == 1 ? 0.55f : 0.32f,
+                  sqrtf(0.55f / (fabsf(curve) + 0.01f)));
+
     /*
+     * 环岛/十字由状态机直接给曲率偏置，不能再用路径纯跟踪的转角覆盖，
+     * 因此这两种相位下跳过纯跟踪，统一走 drive(speed, speed * curve)。
+     */
+    if (!cross.straight && !ring.valid &&
+        path != NULL && path->valid && path->count >= 2U &&
+        CarPursuit_Update(&r->pursuit, path->xy_m, path->count, speed, dt)) {
+        speed = fminf(speed, r->pursuit.result.speed_limit_mps);
+        if (path->speed_limit_mps > 0.0f) {
+            speed = fminf(speed, path->speed_limit_mps);
+        }
+        curve = r->pursuit.result.curvature_inv_m;
+        has_pursuit = 1;
+    }
+
+    /* 十字内强制直行；环岛把转向偏置叠加到视觉/纯跟踪曲率上。 */
+    if (cross.straight) curve = 0.0f;
+    else if (ring.valid) curve += ring.curvature_bias;
+    curve = limit(curve, 15.0f);
+
+    /*
+     * |曲率|<1.75 时累计直行里程，供缺口入口判定使用。
      * 速度上限：第一圈 0.55 m/s、第二圈 0.32 m/s；
      * 同时按 v²·|k|≈0.55 m/s² 限制横向加速度，弯道自动减速。
      */
-    speed = fminf(r->lap == 1 ? 0.55f : 0.32f, sqrtf(0.55f / (fabsf(curve) + 0.01f)));
+    r->straight_m = fabsf(curve) < 1.75f ? r->straight_m + fmaxf(0,ds) : 0;
+    speed = fminf(speed, fminf(r->lap == 1 ? 0.55f : 0.32f,
+                                sqrtf(0.55f / (fabsf(curve) + 0.01f))));
     /*
      * 置信度低于 0.65，或遇到环岛/十字等几何不确定元素时，再降到 0.24 m/s。
      */
@@ -275,14 +354,27 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
      * 第二圈看到红灯再降到 0.20 m/s，保证能停进 0.2 m 的停车判定区。
      */
     if (o->element == VISION_ELEMENT_RED && r->lap == 2) speed = fminf(speed, 0.20f);
+    /* 环岛/十字状态机给出的速度缩放。 */
+    speed *= fminf(ring.speed_scale, cross.speed_scale);
     /*
      * 终点收敛：按剩余里程的平方根限速（减速度约 0.8 m/s²，最低 0.05 m/s），
      * 避免冲过终点线后无路可走。
      */
     speed = fminf(speed, sqrtf(fmaxf(0.0025f, 0.8f * (RACE_FINISH_M - r->distance))));
     /*
-     * 输出双轮目标转速：横摆角速度 = 前进速度 × 曲率；
-     * drive() 内部再按 CAR_RPM_LIMIT 等比例限幅。
+     * 输出双轮目标转速：有路径时用纯跟踪 + 虚拟舵机换算左右轮，
+     * 否则用横摆角速度 = 前进速度 × 曲率；两者都按 CAR_RPM_LIMIT 限幅。
      */
+    if (has_pursuit) {
+        RaceDrive out;
+        float peak;
+        CarPursuit_Wheels(&r->pursuit, speed, out.rpm);
+        peak = fmaxf(fabsf(out.rpm[0]), fabsf(out.rpm[1]));
+        if (peak > CAR_RPM_LIMIT) {
+            out.rpm[0] *= CAR_RPM_LIMIT / peak;
+            out.rpm[1] *= CAR_RPM_LIMIT / peak;
+        }
+        return out;
+    }
     return drive(speed, speed * curve);
 }

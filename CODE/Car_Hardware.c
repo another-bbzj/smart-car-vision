@@ -239,8 +239,10 @@ static void race_tick(int32_t l, int32_t r, uint32_t dt_us)
     static unsigned scan_ms, stop_release_ms;
     Key_Event_Struct key;
     CarVisionObservation o;
+    CarVisionPath path;
     uint32_t now = HAL_GetTick();
     uint8_t fresh = CarVision_GetObservation(&vision,now,&o);
+    uint8_t path_ok = CarVision_GetPath(&vision,now,&path) && !vision_rx_fault;
     uint8_t still = fabsf(car.speed[0]) < 2 && fabsf(car.speed[1]) < 2;
     chassis_still = still && car.state == CAR_STOP;
     uint8_t up = NEUQ_GPIO_read(KEY_UP_PIN) == GPIO_Low;
@@ -280,6 +282,7 @@ static void race_tick(int32_t l, int32_t r, uint32_t dt_us)
     if (car.autonomous) {
         float metres = 6.2831853f * RACE_RADIUS_M / CAR_ENCODER_CPR;
         RaceDrive cmd = Race_Step(&race, fresh && !vision_rx_fault ? &o : NULL,
+                                  path_ok ? &path : NULL,
                                   l*metres, r*metres, dt_us*0.000001f, gyro_rate,
                                   gyro_valid && now-gyro_stamp<=40U, still, now);
         if (race.phase == RACE_FAULT) Car_Fault(&car,CAR_RACE_FAULT);
