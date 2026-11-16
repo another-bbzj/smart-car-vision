@@ -15,7 +15,8 @@ case "$TARGET" in
     test_vision_link) SRC=test_vision_link.cpp ;;
     test_sudoku) SRC=test_sudoku.cpp ;;
     test_run) SRC=test_run.cpp ;;
-    *) echo 'Usage: bash build.sh [vision|main|test_frontend|test_gap|test_obstacles|test_obstacle_task|test_vision_link|test_sudoku|test_run]' >&2; exit 1 ;;
+    test_gray_track) SRC=test_gray_track.cpp ;;
+    *) echo 'Usage: bash build.sh [vision|main|test_frontend|test_gap|test_obstacles|test_obstacle_task|test_vision_link|test_sudoku|test_run|test_gray_track]' >&2; exit 1 ;;
 esac
 read -r -a OPENCV_FLAGS <<< "$(pkg-config --cflags --libs opencv4)"
 g++ -std=c++17 -O2 -Wall -Wextra "$SRC" -o "$TARGET" "${OPENCV_FLAGS[@]}" -pthread

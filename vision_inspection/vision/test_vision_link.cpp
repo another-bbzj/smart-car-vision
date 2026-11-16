@@ -26,6 +26,15 @@ int main() {
             0xa5,0x5a,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7b,0x00,0x00,0xaf,0x75
         };
         check(hello == expectedHello, "HELLO frame matches expected v1 layout and CRC");
+        vision_link::PathObservation path;
+        path.flags = vision_link::PathLeft | vision_link::PathRing;
+        path.speedMmps = 500;
+        path.points = {{0, 50}, {200, 300}};
+        const auto pathFrame = vision_link::encodePath(1, 123, 0, path);
+        check(pathFrame.size() == 28 && pathFrame[2] == 1 && pathFrame[3] == 3 &&
+              pathFrame[14] == 2 && pathFrame[15] == path.flags &&
+              pathFrame[16] == 0x01 && pathFrame[17] == 0xF4,
+              "TYPE=3 path frame carries count, flags and speed before points");
         o.element = vision_link::Element::RedObstacle;
         o.confidence = 875;
         const auto red = vision_link::encodeTrack(7, 0x12345678, 30, o);

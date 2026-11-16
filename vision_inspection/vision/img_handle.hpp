@@ -203,6 +203,8 @@ struct FrameResult {
     obstacle::Observation obstacles; // 当前帧三色障碍候选、主目标和可视化图。
     obstacle_task::Event obstacleEvent; // 路障策略输出给控制组的单个待处理事件。
     vision_link::TrackObservation wireObservation; // 映射到 F407 TYPE=1 协议的本帧道路/元素观测。
+    std::vector<cv::Point2f> pathMeters; // 车辆坐标系路径点（x 右、y 前，单位米），供 TYPE=3 纯跟踪。
+    std::uint8_t pathFlags = 0;          // 元素方向/相位标志，取值见 vision_link::PathFlags。
     cv::Mat mask, blueMask, overlay, birdImage; // 循线前端和鸟瞰处理的调试图像。
 };
 // 新视频或丢帧后重置时序状态，避免上一次运行中的环岛/十字状态泄漏。
@@ -444,6 +446,35 @@ if (hasPreview) {
                 previewAngle=bird::calculatePreviewAngle(vehiclePoint,previewPoint);
             }
         }
+    }
+    // 路径下发：把选中的鸟瞰中线转换成车辆坐标系（x 右、y 前，单位米），
+    // 供 F407 的纯跟踪模块使用。只保留车辆前方 0.05~2 m 的点，并抽稀到 16 点。
+    if (selectedCenter != nullptr && selectedCenter->size() >= 2) {
+        const float mpp = config::kMetersPerPixel;
+        std::vector<cv::Point2f> candidates;
+        candidates.reserve(selectedCenter->size());
+        for (const auto& p : *selectedCenter) {
+            const float x = (p.x - vehiclePoint.x) * mpp;
+            const float y = (vehiclePoint.y - p.y) * mpp;
+            if (y < 0.05f || y > 2.0f) continue;
+            if (!candidates.empty() && cv::norm(cv::Point2f(x, y) - candidates.back()) < 0.04f)
+                continue;
+            candidates.emplace_back(x, y);
+        }
+        if (!candidates.empty()) {
+            const std::size_t maxPoints = vision_link::kPathMaxPoints;
+            const std::size_t stride = std::max<std::size_t>(1, (candidates.size() + maxPoints - 1) / maxPoints);
+            for (std::size_t i = 0; i < candidates.size() && result.pathMeters.size() < maxPoints; i += stride)
+                result.pathMeters.push_back(candidates[i]);
+            if (result.pathMeters.size() < maxPoints &&
+                result.pathMeters.back() != candidates.back())
+                result.pathMeters.push_back(candidates.back());
+        }
+        if (ringState != bird::RingState::None) result.pathFlags |= vision_link::PathRing;
+        if (state != bird::CrossState::None) result.pathFlags |= vision_link::PathCross;
+        const std::string side = selected.side;
+        if (side.rfind("LEFT", 0) == 0) result.pathFlags |= vision_link::PathLeft;
+        else if (side.rfind("RIGHT", 0) == 0) result.pathFlags |= vision_link::PathRight;
     }
     // 阶段 5：把左右推算中线、选用中线、预瞄点和状态画在鸟瞰图上，
     // 并把当前帧结果封装返回给离线日志或上层调用者。

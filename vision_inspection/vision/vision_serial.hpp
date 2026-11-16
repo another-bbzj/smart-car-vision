@@ -56,6 +56,14 @@ public:
         writeAll(encodeTile(sequence_,session_,age,index,cells));
         ++sequence_;
     }
+
+    // Send the vehicle-frame path used by the F407 pure-pursuit tracker.
+    // PATH has an independent sequence space on the receiver, so sharing this
+    // monotonic counter is safe even when track and path are sent back-to-back.
+    void sendPath(std::uint16_t processingAgeMs, const PathObservation& path) {
+        writeAll(encodePath(sequence_, session_, processingAgeMs, path));
+        sequence_ = static_cast<std::uint16_t>(sequence_ + 1);
+    }
 private:
     void close() {
         if (fd_ >= 0) { ::close(fd_); fd_ = -1; }

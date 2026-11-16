@@ -1,5 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -160,7 +162,21 @@ int main(int argc, char** argv) {
             valid += result.pursuit.valid;
             if (visionSender) {
                 // 这是当前进程可测的采集后年龄；不包含相机曝光前和 F407 接收队列延迟。
-                if (ms < 200) visionSender->sendTrack(static_cast<uint16_t>(std::ceil(ms)), result.wireObservation);
+                const auto age = static_cast<uint16_t>(std::ceil(ms));
+                if (ms < 200) visionSender->sendTrack(age, result.wireObservation);
+                if (ms < 200 && !result.pathMeters.empty()) {
+                    vision_link::PathObservation path;
+                    path.flags = result.pathFlags;
+                    path.speedMmps = 0;
+                    path.points.reserve(result.pathMeters.size());
+                    for (const auto& p : result.pathMeters) {
+                        path.points.push_back({
+                            static_cast<std::int16_t>(std::lround(p.x * 1000.f)),
+                            static_cast<std::int16_t>(std::lround(p.y * 1000.f))
+                        });
+                    }
+                    visionSender->sendPath(age, path);
+                }
             }
             if (frames % 2 == 0) {
                 for (const auto& tile:tileReader.readAll(current)) {

@@ -13,8 +13,11 @@ constexpr std::uint8_t kVersion = 1;
 constexpr std::uint8_t kTypeHello = 0;
 constexpr std::uint8_t kTypeTrack = 1;
 constexpr std::uint8_t kTypeSudokuTile = 2;
+constexpr std::uint8_t kTypePath = 3;
 constexpr std::size_t kTrackPayloadSize = 16;
 constexpr std::size_t kTrackFrameSize = 32; // 2 sync + 12 header + 16 payload + 2 CRC
+constexpr std::size_t kPathMaxPoints = 16;
+constexpr std::size_t kPathPayloadBase = 4; // count + flags + speed
 
 enum class Element : std::uint8_t {
     None = 0, Ring = 1, Cross = 2, Gap = 3,
@@ -130,6 +133,59 @@ inline std::vector<uint8_t> encodeTile(uint16_t sequence, uint32_t session, uint
     appendU16(out,10); appendU16(out,sequence); appendU32(out,session); appendU16(out,age);
     out.push_back(index); out.insert(out.end(),cells.begin(),cells.end());
     appendU16(out,crc16(out.data()+2,out.size()-2));
+    return out;
+}
+
+// PATH 帧元素标志，与 F407 的 CAR_VISION_PATH_* 保持一致。
+enum PathFlags : std::uint8_t {
+    PathLeft = 1u << 0,   // 元素/环岛在左侧
+    PathRight = 1u << 1,  // 元素/环岛在右侧
+    PathRing = 1u << 2,   // 环岛相位激活
+    PathCross = 1u << 3   // 十字相位激活
+};
+
+// 车辆坐标系路径点：x 向右、y 向前，单位毫米。
+struct PathPoint {
+    std::int16_t xMm = 0;
+    std::int16_t yMm = 0;
+};
+
+struct PathObservation {
+    std::uint8_t flags = 0;
+    std::uint16_t speedMmps = 0; // 0 表示不提供建议速度
+    std::vector<PathPoint> points;
+};
+
+// 编码 TYPE=3 路径帧；路径帧在 F407 侧使用独立序号。
+inline std::vector<std::uint8_t> encodePath(std::uint16_t sequence, std::uint32_t session,
+                                            std::uint16_t processingAgeMs,
+                                            const PathObservation& p) {
+    if (session == 0 || processingAgeMs > 200)
+        throw std::invalid_argument("Invalid vision session or processing age");
+    if (p.points.empty() || p.points.size() > kPathMaxPoints ||
+        p.flags > 15 || p.speedMmps > 5000)
+        throw std::invalid_argument("Invalid path observation");
+    for (const auto& point : p.points)
+        if (point.xMm < -20000 || point.xMm > 20000 ||
+            point.yMm < -20000 || point.yMm > 20000)
+            throw std::invalid_argument("Path point outside +/-20000 mm");
+
+    std::vector<std::uint8_t> out;
+    out.reserve(16 + kPathPayloadBase + 4 * p.points.size());
+    out.push_back(0xa5); out.push_back(0x5a);
+    out.push_back(kVersion); out.push_back(kTypePath);
+    appendU16(out, static_cast<std::uint16_t>(kPathPayloadBase + 4 * p.points.size()));
+    appendU16(out, sequence);
+    appendU32(out, session);
+    appendU16(out, processingAgeMs);
+    out.push_back(static_cast<std::uint8_t>(p.points.size()));
+    out.push_back(p.flags);
+    appendU16(out, p.speedMmps);
+    for (const auto& point : p.points) {
+        appendI16(out, point.xMm);
+        appendI16(out, point.yMm);
+    }
+    appendU16(out, crc16(out.data() + 2, out.size() - 2));
     return out;
 }
 

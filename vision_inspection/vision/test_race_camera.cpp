@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     assert(CarVision_GetObservation(&rx,40,&obs));
     CarRace race;
     Race_Start(&race);
-    auto wheels=Race_Step(&race,&obs,0,0,0.005f,0,0,1,40);
+    auto wheels=Race_Step(&race,&obs,nullptr,0,0,0.005f,0,0,1,40);
     assert((wheels.rpm[1]-wheels.rpm[0])*track.pursuit.curvature<0);
     assert(!CarVision_GetObservation(&rx,231,&obs));
     auto gap=img_handle(cv::imread("test_fixtures/gap.png"),false,options);
