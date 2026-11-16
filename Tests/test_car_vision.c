@@ -1,5 +1,6 @@
 #include "Car_Vision.h"
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -22,7 +23,7 @@ static void feed(CarVision *v, const uint8_t *f, unsigned n, uint32_t t, uint8_t
 int main(void)
 {
     CarVision v; CarVisionObservation o; CarVisionTile tile;
-    uint8_t f[64],data[16]={0,15,3,132,0,50,0,100,0,20,6,255,0,80,0,0};
+    uint8_t f[128],data[16]={0,15,3,132,0,50,0,100,0,20,6,255,0,80,0,0};
     unsigned n; uint16_t crc=0xffff; const uint8_t *s=(const uint8_t *)"123456789";
     while(*s)crc=CarVision_Crc16(crc,*s++);
     assert(crc==0x29b1);
@@ -90,6 +91,21 @@ int main(void)
     assert(CarVision_GetObservation(&v,0x10U,&o));
     assert(!CarVision_GetObservation(&v,0x100U,&o));
     CarVision_Invalidate(&v);assert(!CarVision_GetObservation(&v,0x100U,&o));
+    {
+        /* TYPE=3 PATH：2 点、flags=3、速度 500 mm/s。 */
+        uint8_t path[12]={2,3,0x01,0xF4,0x00,0x00,0x00,0x32,0x00,0xC8,0x01,0x2C};
+        CarVisionPath p;
+        n=make_frame(f,3,1,789,0,path,12);feed(&v,f,n,800,0);
+        assert(CarVision_GetPath(&v,800,&p));
+        assert(p.count==2 && p.flags==3 && fabsf(p.speed_limit_mps-0.5f)<1e-4f);
+        assert(p.xy_m[0]==0.0f && fabsf(p.xy_m[1]-0.05f)<1e-5f);
+        assert(fabsf(p.xy_m[2]-0.2f)<1e-5f && fabsf(p.xy_m[3]-0.3f)<1e-5f);
+        assert(!CarVision_GetPath(&v,1001,&p));   /* 超过 200 ms 时效 */
+        n=make_frame(f,3,2,789,0,path,12);feed(&v,f,n,1010,0);
+        assert(CarVision_GetPath(&v,1010,&p) && p.sequence==2);
+        n=make_frame(f,3,3,789,0,path,11);feed(&v,f,n,1020,0);
+        assert(!CarVision_GetPath(&v,1020,&p));   /* 长度与 count 不符 */
+    }
     puts("vision interface: all checks passed");
     return 0;
 }

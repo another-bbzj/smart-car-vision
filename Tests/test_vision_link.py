@@ -22,6 +22,16 @@ class VisionWireTests(unittest.TestCase):
         with self.assertRaises(ValueError): link.tile_payload(0, [7] * 9)
         with self.assertRaises(ValueError): link.frame(1, 0, 123, link.track_payload(), 201)
 
+    def test_path_payload(self):
+        payload = link.path_payload([(0, 50), (200, 300)], flags=3, speed_mmps=500)
+        self.assertEqual(len(payload), 12)
+        self.assertEqual(payload, bytes.fromhex('02 03 01 f4 00 00 00 32 00 c8 01 2c'))
+        data = link.frame(3, 1, 123, payload)
+        self.assertEqual(len(data), 28)
+        self.assertEqual(struct.unpack('>H', data[-2:])[0], binascii.crc_hqx(data[2:-2], 0xffff))
+        for bad in [([], 0, 0), ([(0, 0)] * 17, 0, 0), ([(0, 0)], 16, 0), ([(40000, 0)], 0, 0)]:
+            with self.assertRaises(ValueError): link.path_payload(bad[0], bad[1], bad[2])
+
     def test_sender_session_and_sequence_wrap(self):
         class Port:
             def __init__(self): self.frames = []

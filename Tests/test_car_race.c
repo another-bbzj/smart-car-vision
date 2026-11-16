@@ -35,7 +35,7 @@ static void two_laps(void) {
             }
             if (position>=30 && position<31) o.element=VISION_ELEMENT_GREEN;
         }
-        wheels=Race_Step(&r,&o,dl,dr,0.005f,0,0,dl==0 && dr==0,ticks*5);
+        wheels=Race_Step(&r,&o,NULL,dl,dr,0.005f,0,0,dl==0 && dr==0,ticks*5);
         assert(r.phase!=RACE_FAULT);
         if (r.phase!=before && r.phase==RACE_GAP) ++gaps;
         if (r.phase!=before && r.phase==RACE_BYPASS) ++bypasses;
@@ -66,7 +66,7 @@ int main(void) {
     assert(!Race_Solve(tiles,answer));
     Race_Start(&r);
     o.valid_mask=VISION_CURVATURE_VALID; o.curvature_inv_m=3; o.confidence=1;
-    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,0);
+    cmd=Race_Step(&r,&o,NULL,0,0,0.005f,0,0,1,0);
     assert(cmd.rpm[1]>cmd.rpm[0] && cmd.rpm[0]>0);
     Car_Init(&car);
     assert(Car_StartRace(&car));
@@ -75,7 +75,7 @@ int main(void) {
     assert(car.reference[0]>0 && car.reference[1]>car.reference[0]);
     Car_LocalStop(&car);
     assert(car.state==CAR_STOP && !car.autonomous && !car.output[1]);
-    cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,5);
+    cmd=Race_Step(&r,NULL,NULL,0,0,0.005f,0,0,1,5);
     assert(r.phase==RACE_FAULT && cmd.rpm[0]==0);
     two_laps();
     puts("PASS race authority, geometry, fresh link, two laps, 1.60 m gaps, bypass clearance, red dwell, finish and Sudoku");

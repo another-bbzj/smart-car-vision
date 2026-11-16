@@ -34,6 +34,18 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Vision test compilation failed' }
     & (Join-Path $carOutput 'test_car_vision.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Vision tests failed' }
+    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_pursuit.c CODE/Car_Pursuit.c CODE/Car_Steer.c -o build/test_car_pursuit.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Pursuit test compilation failed' }
+    & (Join-Path $carOutput 'test_car_pursuit.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Pursuit tests failed' }
+    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_ring.c CODE/Car_Ring.c CODE/Car_Cross.c -o build/test_car_ring.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Ring/cross test compilation failed' }
+    & (Join-Path $carOutput 'test_car_ring.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Ring/cross tests failed' }
+    clang -std=c99 -Wall -Wextra -Werror -DCAR_SPEED_PID_INCREMENTAL=1 -I CODE Tests/test_car_incremental.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_incremental.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Incremental PID test compilation failed' }
+    & (Join-Path $carOutput 'test_car_incremental.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Incremental PID tests failed' }
     clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_menu.c CODE/Car_Menu.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_menu.exe
     if ($LASTEXITCODE -ne 0) { throw 'Menu test compilation failed' }
     & (Join-Path $carOutput 'test_car_menu.exe')
