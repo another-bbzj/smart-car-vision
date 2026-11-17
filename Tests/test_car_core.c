@@ -77,8 +77,8 @@ int main(void)
     command(&c,2,0,0); assert(c.state==CAR_STOP && c.output[0]==0 && c.output[1]==0);
     command(&c,2,0,0); assert(c.output[0]==0 && c.target[0]==0);
     { unsigned char pid[]={0,0,200,0,12,0,0};
-      command(&c,4,pid,7); assert(c.pid[0].kp==2);
-      command(&c,1,0,0); pid[2]=250; command(&c,4,pid,7); assert(c.pid[0].kp==2 && c.result==1); }
+      command(&c,4,pid,7); assert(c.pid_speed[0].kp==2);
+      command(&c,1,0,0); pid[2]=250; command(&c,4,pid,7); assert(c.pid_speed[0].kp==2 && c.result==1); }
     /* A truncated frame must expire, allowing the next complete STOP. */
     Car_FeedByte(&c,0xc3); Car_FeedByte(&c,0x3c); Car_FeedByte(&c,4);
     ticks(&c,21,0,0); command(&c,2,0,0); assert(c.state==CAR_STOP);

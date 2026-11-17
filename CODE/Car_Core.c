@@ -8,7 +8,9 @@
  * 编码器或串口。它把硬件层送来的字节流和编码器增量，转换为双轮 PWM 输出：
  *
  *     蓝牙字节 -> 协议解析 -> 状态机与目标转速
- *              -> 五次曲线参考规划 -> 双轮速度 PID -> 双轮输出
+ *              -> 五次曲线参考规划
+ *              -> [外环位置式位置 PID，默认关闭]
+ *              -> 内环增量式速度 PID -> 双轮输出
  *              -> 运行保护（通信超时、堵转、方向异常、周期异常）
  *
  * 硬件采样、PWM 写入、串口收发和定时中断接入由 Car_Hardware.c 完成；
@@ -19,9 +21,10 @@
  *   1. 检查实际周期是否在允许范围内，越界立即进入时序故障；
  *   2. 检查蓝牙半帧超时和运行通信看门狗；
  *   3. 运行状态下推进双轮共享进度的五次参考曲线；
- *   4. 用编码器增量计算实测转速并做一阶低通；
- *   5. 对每一轮执行速度 PID，得到带符号 PWM 输出；
- *   6. 检查堵转和方向异常，必要时锁存故障并停车。
+ *   4. 用编码器增量计算实测转速并做一阶低通，同时累计输出轴位置；
+ *   5. 外环启用时用位置式位置 PID 生成转速给定，否则直接使用规划器参考；
+ *   6. 对每一轮执行内环增量式速度 PID，得到带符号 PWM 输出；
+ *   7. 检查堵转和方向异常，必要时锁存故障并停车。
  *
  * 函数列表（按文件内出现顺序）
  * ----------------------------------------------------------------------------
@@ -30,9 +33,9 @@
  *   static float clamp(float x, float lim)
  *       —— 把浮点数限制到 [-lim, +lim]，用于目标转速限幅。
  *   static void reset_motion(Car_Core *c)
- *       —— 停止运动：清空规划器、目标、参考、输出和保护计时。
+ *       —— 停止运动：清空规划器、目标、参考、位置、输出和保护计时。
  *   void Car_Init(Car_Core *c)
- *       —— 上电初始化：清空控制对象、创建规划器和双轮 PID。
+ *       —— 上电初始化：清空控制对象、创建规划器和双轮串级 PID。
  *   void Car_Fault(Car_Core *c, uint8_t fault)
  *       —— 锁存首次故障原因、立即清零输出并丢弃未收完的蓝牙帧。
  *   uint8_t Car_Crc8(uint8_t crc, uint8_t byte)
@@ -122,7 +125,7 @@ static float clamp(float x, float lim)
  * 使用示例：
  *     reset_motion(c);            // STOP 命令、ARM 启动或故障时调用
  * 备注信息：保留实测转速 speed[]，供后续测速滤波继续使用；
- *           速度环积分、目标、参考和输出全部清零。
+ *           内环、外环积分和位置反馈全部清零，下一次运行从位置零点开始。
  */
 static void reset_motion(Car_Core *c)
 {
@@ -133,13 +136,16 @@ static void reset_motion(Car_Core *c)
     for (i = 0; i < 2; i++)
     {
         c->target[i] = 0.0f;                         /* 目标转速清零 */
-        c->reference[i] = 0.0f;                      /* 参考转速清零 */
+        c->reference[i] = 0.0f;                      /* 内环转速给定清零 */
+        c->position[i] = 0.0f;                       /* 累计位置回到零点 */
+        c->position_target[i] = 0.0f;                /* 外环目标位置回到零点 */
         c->output[i] = 0.0f;                         /* 控制输出清零 */
         c->stall_us[i] = 0;                          /* 堵转计时清零 */
         c->overspeed_us[i] = 0;
         c->direction_us[i] = 0;                      /* 方向异常计时清零 */
         c->slow_speed[i] = absolute(c->speed[i]);    /* 慢速滤波重新播种 */
-        Car_Pid_reset(&c->pid[i]);                   /* 清除速度环历史与故障 */
+        Car_PidInc_reset(&c->pid_speed[i]);          /* 清除内环速度历史与故障 */
+        Car_Pid_reset(&c->pid_position[i]);          /* 清除外环位置历史与故障 */
     }
 }
 
@@ -150,14 +156,16 @@ static void reset_motion(Car_Core *c)
 /*
  * 函数名称：Car_Init
  * 函数功能：上电初始化控制对象，创建双轮共享进度的参考规划器和左右轮
- *           两套独立的速度 PID，初始化后进入 CAR_STOP。
+ *           两套独立的串级 PID（外环位置式位置环 + 内环增量式速度环），
+ *           初始化后进入 CAR_STOP。
  * 参数说明：c —— 待初始化的控制对象。
  * 返回参数：无。
  * 使用示例：
  *     Car_Core car;
  *     Car_Init(&car);
  * 备注信息：规划器限制和 PID 默认参数均来自 Car_Config.h；
- *           PID 配置失败时直接进入故障状态。
+ *           PID 配置失败时直接进入故障状态。外环即使默认关闭也会初始化，
+ *           便于以后只改编译开关就能启用。
  */
 void Car_Init(Car_Core *c)
 {
@@ -173,20 +181,40 @@ void Car_Init(Car_Core *c)
 
     for (i = 0; i < 2; i++)
     {
-        /* 默认增益和输出限幅同样来自 Car_Config.h，停车时可由蓝牙修改。 */
-        Car_Pid_init(&c->pid[i],
-                     CAR_DEFAULT_KP,
-                     CAR_DEFAULT_KI,
-                     CAR_DEFAULT_KD,
-                     CAR_PWM_LIMIT);
+        /* 内环：增量式速度 PID，默认增益和输出限幅来自 Car_Config.h，
+         * 停车时可由蓝牙命令 4 或板端菜单修改。 */
+        Car_PidInc_init(&c->pid_speed[i],
+                        CAR_DEFAULT_KP,
+                        CAR_DEFAULT_KI,
+                        CAR_DEFAULT_KD,
+                        CAR_PWM_LIMIT);
 
-        if (!Car_Pid_configure(&c->pid[i],
+        if (!Car_PidInc_configure(&c->pid_speed[i],
+                                  CAR_PID_SETPOINT_WEIGHT,
+                                  CAR_PID_D_TAU_S,
+                                  1.0f,
+                                  CAR_FF_KS,
+                                  CAR_FF_KV,
+                                  CAR_FF_KA))
+        {
+            Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 配置失败立即进入故障 */
+        }
+
+        /* 外环：位置式位置 PID，输出是内环转速给定，因此限幅用转速上限。
+         * 默认增益全 0，只有 CAR_CASCADE_OUTER_ENABLE=1 时才参与控制。 */
+        Car_Pid_init(&c->pid_position[i],
+                     CAR_POS_DEFAULT_KP,
+                     CAR_POS_DEFAULT_KI,
+                     CAR_POS_DEFAULT_KD,
+                     CAR_RPM_LIMIT);
+
+        if (!Car_Pid_configure(&c->pid_position[i],
                                CAR_PID_SETPOINT_WEIGHT,
                                CAR_PID_D_TAU_S,
                                1.0f,
-                               CAR_FF_KS,
-                               CAR_FF_KV,
-                               CAR_FF_KA))
+                               0.0f,
+                               0.0f,
+                               0.0f))
         {
             Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 配置失败立即进入故障 */
         }
@@ -239,12 +267,12 @@ int Car_StartRace(Car_Core *c)
 
 uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
 {
-    Car_Pid_Struct next;
+    Car_PidInc_Struct next;
     if (c->state != CAR_STOP) return 1;
-    if (wheel > 1 || !Car_Pid_init(&next, kp, ki, kd, CAR_PWM_LIMIT) ||
-        !Car_Pid_configure(&next, CAR_PID_SETPOINT_WEIGHT, CAR_PID_D_TAU_S,
-                           1.0f, CAR_FF_KS, CAR_FF_KV, CAR_FF_KA)) return 2;
-    c->pid[wheel] = next;
+    if (wheel > 1 || !Car_PidInc_init(&next, kp, ki, kd, CAR_PWM_LIMIT) ||
+        !Car_PidInc_configure(&next, CAR_PID_SETPOINT_WEIGHT, CAR_PID_D_TAU_S,
+                              1.0f, CAR_FF_KS, CAR_FF_KV, CAR_FF_KA)) return 2;
+    c->pid_speed[wheel] = next;      /* 蓝牙命令 4 只写内环速度环 */
     return 0;
 }
 
@@ -627,13 +655,29 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
         c->speed[i] += (dt / (CAR_SPEED_FILTER_TAU_S + dt)) *
                        (raw - c->speed[i]);
 
+        /* 累计输出轴位置，单位圈（rev），供外环位置环使用。 */
+        c->position[i] += (float)counts[i] / CAR_ENCODER_CPR;
+
         if (c->state != CAR_RUN)
         {
             c->output[i] = 0.0f;                  /* 非运行状态撤去输出 */
             continue;
         }
 
-        c->reference[i] = c->profile.value[i];    /* 本拍参考转速 */
+        c->reference[i] = c->profile.value[i];    /* 本拍规划器参考转速 */
+
+        /*
+         * 外环位置式位置环。默认由 CAR_CASCADE_OUTER_ENABLE = 0 关闭：
+         * 此时位置环不参与控制，内环直接跟随规划器参考转速。
+         * 启用后位置误差换算为内环转速给定，并受 CAR_RPM_LIMIT 限幅。
+         */
+#if CAR_CASCADE_OUTER_ENABLE
+        c->reference[i] = Car_Pid_update_dt(&c->pid_position[i],
+                                            c->position_target[i],
+                                            c->position[i],
+                                            0.0f,
+                                            dt);
+#endif
 
         /*
          * 单轮目标和参考均归零后撤去驱动、清除积分；
@@ -643,19 +687,33 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
         if (c->reference[i] == 0.0f && c->target[i] == 0.0f)
         {
             c->output[i] = 0.0f;
-            Car_Pid_reset(&c->pid[i]);
+            Car_PidInc_reset(&c->pid_speed[i]);
+            Car_Pid_reset(&c->pid_position[i]);
         }
         else
         {
-            c->output[i] = Car_Pid_update_dt(&c->pid[i],
-                                             c->reference[i],
-                                             c->speed[i],
-                                             c->profile.acceleration[i],
-                                             dt);
+            /*
+             * 内环增量式速度 PID。外环关闭时用规划器加速度做 Ka 前馈；
+             * 外环启用时内环给定来自位置环，规划器加速度不再对应它，
+             * 因此按 0 处理。
+             */
+#if CAR_CASCADE_OUTER_ENABLE
+            c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
+                                                c->reference[i],
+                                                c->speed[i],
+                                                0.0f,
+                                                dt);
+#else
+            c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
+                                                c->reference[i],
+                                                c->speed[i],
+                                                c->profile.acceleration[i],
+                                                dt);
+#endif
         }
 
-        /* PID 内部检测到数值异常时会锁存 fault，这里立即转入整车故障。 */
-        if (c->pid[i].fault)
+        /* 任一环内部检测到数值异常都会锁存 fault，这里立即转入整车故障。 */
+        if (c->pid_speed[i].fault || c->pid_position[i].fault)
         {
             Car_Fault(c, CAR_CONTROLLER_FAULT);
             continue;

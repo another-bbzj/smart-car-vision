@@ -138,7 +138,7 @@ class Console:
         ttk.Label(panel, textvariable=self.status, wraplength=700).pack(anchor='w', pady=12)
         self.values = tk.StringVar(value='等待回传…')
         ttk.Label(panel, textvariable=self.values, font=('Consolas', 12)).pack(anchor='w')
-        tuning = ttk.LabelFrame(panel, text='停车后分别调整左右轮 PID（写入 RAM，重启加载已保存值或默认值）', padding=10)
+        tuning = ttk.LabelFrame(panel, text='停车后分别调整左右轮内环 PID（写入 RAM，重启加载已保存值或默认值）', padding=10)
         tuning.pack(fill='x', pady=14)
         self.pid_entries = []
         for wheel, label in enumerate(('左轮', '右轮')):
@@ -152,7 +152,7 @@ class Console:
                 entries.append(entry)
             self.pid_entries.append(entries)
             ttk.Button(tuning, text='写入', command=lambda w=wheel: self.set_pid(w)).grid(row=wheel, column=7, padx=8)
-        self.actual_pid = tk.StringVar(value='实际 PID：等待回传')
+        self.actual_pid = tk.StringVar(value='实际内环 PID：等待回传')
         ttk.Label(panel, textvariable=self.actual_pid).pack(anchor='w')
         ttk.Label(panel, text='松开方向键：两轮目标归零并制动。失去窗口焦点：停止并取消使能。', foreground='#555555').pack(anchor='w', pady=8)
         if args.log:
@@ -306,7 +306,7 @@ class Console:
                             self.pending_arm = False
                     self.status.set(f'状态：{["停止", "运行", "故障"][state]}　{FAULTS.get(fault, "未知故障")}　指令结果：{int(sample[8])}　有效帧：{int(sample[9])}')
                     self.values.set(f'左轮 目标 {sample[2]:6.1f} / 实测 {sample[3]:6.1f} rpm  PWM {sample[6]:6.1f}%\n右轮 目标 {sample[4]:6.1f} / 实测 {sample[5]:6.1f} rpm  PWM {sample[7]:6.1f}%')
-                    self.actual_pid.set('实际 PID：左 %.2f / %.2f / %.2f　右 %.2f / %.2f / %.2f' % tuple(sample[10:16]))
+                    self.actual_pid.set('实际内环 PID：左 %.2f / %.2f / %.2f　右 %.2f / %.2f / %.2f' % tuple(sample[10:16]))
                     if self.log_file:
                         self.csv.writerow([time.time()] + list(sample))
                 if now - self.last_rx > 0.35 and (self.armed or self.pending_arm):

@@ -89,19 +89,19 @@ int main(void)
     assert(menu.group == MENU_LEFT_PID);
     press(&menu,&car,KEY_OK,START_READY);
     press(&menu,&car,KEY_OK,START_READY);
-    before = car.pid[0].kp;
+    before = car.pid_speed[0].kp;
     press(&menu,&car,KEY_UP,START_READY);
     press(&menu,&car,KEY_BACK,START_READY);
-    assert(car.pid[0].kp == before); /* cancellation preserves gains */
+    assert(car.pid_speed[0].kp == before); /* cancellation preserves gains */
     press(&menu,&car,KEY_OK,START_READY);
     press(&menu,&car,KEY_UP,START_READY);
     press(&menu,&car,KEY_OK,START_READY);
-    assert(fabsf(car.pid[0].kp-before-0.01f) < 0.0001f);
-    before = car.pid[0].kp;
+    assert(fabsf(car.pid_speed[0].kp-before-0.01f) < 0.0001f);
+    before = car.pid_speed[0].kp;
     assert(Car_StartRace(&car));
     press(&menu,&car,KEY_UP,START_STOP_FIRST);
     press(&menu,&car,KEY_OK,START_STOP_FIRST);
-    assert(car.pid[0].kp == before);
+    assert(car.pid_speed[0].kp == before);
     Car_LocalStop(&car);
     menu.candidate = 65535;
     press(&menu,&car,KEY_UP,START_READY);
@@ -111,7 +111,7 @@ int main(void)
     assert(menu.candidate == 0);
     assert(Car_SetPid(&car,2,1,1,1) == 2);
     assert(Car_SetPid(&car,0,NAN,1,1) == 2);
-    assert(car.pid[0].kp == before);
+    assert(car.pid_speed[0].kp == before);
     CarMenu_ShowResult(&menu);
     assert(menu.depth == 2 && menu.group == MENU_RACE && menu.item[MENU_RACE] == 2);
 

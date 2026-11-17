@@ -209,7 +209,7 @@ static void poll_menu(void)
     }
     if (row == UI_ROWS) {
         unsigned i;
-        const Car_Pid_Struct *pid;
+        const Car_PidInc_Struct *pid;
         if (now-last < 120U) return;
         last = now;
         mask = __get_PRIMASK();
@@ -234,7 +234,7 @@ static void poll_menu(void)
             view.reference[i] = car.reference[i];
             view.pwm[i] = car.output[i]/100.0f;
         }
-        pid = &car.pid[menu.group == MENU_RIGHT_PID];
+        pid = &car.pid_speed[menu.group == MENU_RIGHT_PID];
         view.gains[0] = pid->kp;
         view.gains[1] = pid->ki;
         view.gains[2] = pid->kd;
@@ -769,7 +769,7 @@ void Car_PIT_Handler(void)
          * 遥测顺序：
          *   0 状态，1 故障码，2/3 左轮参考/实测，4/5 右轮参考/实测，
          *   6/7 左右轮输出百分比，8 命令结果，9 帧数，
-         *   10~12 左轮 Kp/Ki/Kd，13~15 右轮 Kp/Ki/Kd。
+         *   10~12 左轮内环 Kp/Ki/Kd，13~15 右轮内环 Kp/Ki/Kd。
          */
         channels[0] = (float)car.state;
         channels[1] = (float)car.fault;
@@ -781,12 +781,12 @@ void Car_PIT_Handler(void)
         channels[7] = car.output[1] / 100.0f;
         channels[8] = (float)car.result;
         channels[9] = (float)car.frames;
-        channels[10] = car.pid[0].kp;
-        channels[11] = car.pid[0].ki;
-        channels[12] = car.pid[0].kd;
-        channels[13] = car.pid[1].kp;
-        channels[14] = car.pid[1].ki;
-        channels[15] = car.pid[1].kd;
+        channels[10] = car.pid_speed[0].kp;
+        channels[11] = car.pid_speed[0].ki;
+        channels[12] = car.pid_speed[0].kd;
+        channels[13] = car.pid_speed[1].kp;
+        channels[14] = car.pid_speed[1].ki;
+        channels[15] = car.pid_speed[1].kd;
 
         /*
          * 默认 10 Hz × (16 × 4 + 4) 字节 = 680 B/s，

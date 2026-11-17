@@ -57,17 +57,27 @@ enum
  *     1 ARM     ：启动，无负载；
  *     2 STOP    ：停止/清故障，无负载；
  *     3 WHEELS  ：双轮目标转速，两个大端 int16；
- *     4 PID     ：设置 PID，轮号 0/1 + 三个大端 uint16（Kp/Ki/Kd，放大 100 倍）；
+ *     4 PID     ：设置内环速度 PID，轮号 0/1 + 三个大端 uint16（Kp/Ki/Kd，放大 100 倍）；
+ *                 外环位置环暂不开放蓝牙调参；
  *     5 HEARTBEAT：心跳，无负载。
  *
  *   result：0 成功，1 状态不允许，2 参数无效，3 帧或命令无效。
  */
 typedef struct
 {
-    /* ---------- 双轮控制状态 ---------- */
-    Car_Pid_Struct pid[2];   /* 左右轮速度 PID，下标 0 左、1 右 */
+    /* ---------- 双轮串级控制状态 ---------- */
+    /*
+     * 外环位置环（位置式 PID）-> 内环速度环（增量式 PID）-> PWM。
+     * 外环由 Car_Config.h 的 CAR_CASCADE_OUTER_ENABLE 控制，默认 0（关闭）：
+     * 关闭时规划器参考转速直接送内环，位置环只累积反馈、不参与控制。
+     * 蓝牙命令 4、板端 PID 菜单和遥测通道 10~15 都只读写内环 pid_speed[]。
+     */
+    Car_PidInc_Struct pid_speed[2];   /* 内环速度环：增量式 PID，下标 0 左、1 右 */
+    Car_Pid_Struct pid_position[2];   /* 外环位置环：位置式 PID，下标 0 左、1 右 */
+    float position[2];        /* 累计位置，单位输出轴圈数（rev），下标 0 左、1 右 */
+    float position_target[2]; /* 外环目标位置，单位输出轴圈数（rev），当前无协议来源 */
     float target[2];         /* 目标转速，单位 rpm，下标 0 左、1 右 */
-    float reference[2];      /* 规划器输出的参考转速，单位 rpm，下标 0 左、1 右 */
+    float reference[2];      /* 内环转速给定，单位 rpm：外环关闭时等于规划器输出 */
     float speed[2];          /* 滤波后的实测转速，单位 rpm，下标 0 左、1 右 */
     float output[2];         /* 带符号 PWM 输出，正负号表示方向，下标 0 左、1 右 */
 
@@ -109,7 +119,9 @@ typedef struct
  */
 void Car_Init(Car_Core *c);
 int Car_StartRace(Car_Core *c);
-/* Same STOP-only transaction for the board menu and Bluetooth PID command. */
+/* Stop-only transaction used by the board menu and Bluetooth command 4.
+ * It writes the inner incremental speed loop; the outer position loop is not
+ * exposed over Bluetooth and stays disabled while CAR_CASCADE_OUTER_ENABLE=0. */
 uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd);
 void Car_LocalStop(Car_Core *c);
 void Car_RaceWheels(Car_Core *c, const float rpm[2]);

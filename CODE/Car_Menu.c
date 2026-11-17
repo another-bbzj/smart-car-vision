@@ -5,7 +5,7 @@
 
 /* Navigation follows task2: circular lists, per-page cursor, OK applies,
  * BACK discards. The third level holds the actual action or live data. */
-static const char *const groups[] = {"Race", "Sensors", "Left wheel PID", "Right wheel PID"};
+static const char *const groups[] = {"Race", "Sensors", "Left wheel inner PID", "Right wheel inner PID"};
 static const char *const race_items[] = {"Start race", "Race status", "Sudoku result"};
 static const char *const sensor_items[] = {"Wheel speeds", "IMU / MPU6050", "Vision"};
 static const char *const gain_names[] = {"Kp", "Ki", "Kd", "Save parameters"};
@@ -58,7 +58,7 @@ MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCon
         if (m->depth < 2) {
             ++m->depth;
             if (m->depth == 2 && pid && item < 3) {
-                Car_Pid_Struct *p = &car->pid[m->group - MENU_LEFT_PID];
+                Car_PidInc_Struct *p = &car->pid_speed[m->group - MENU_LEFT_PID];
                 float gains[] = {p->kp, p->ki, p->kd};
                 m->candidate = (unsigned)(gains[item]*100.0f+0.5f);
             }
@@ -72,7 +72,7 @@ MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCon
             }
         } else if (pid) {
             unsigned wheel = m->group - MENU_LEFT_PID;
-            Car_Pid_Struct *p = &car->pid[wheel];
+            Car_PidInc_Struct *p = &car->pid_speed[wheel];
             float gains[] = {p->kp,p->ki,p->kd};
             uint8_t result;
             gains[item] = m->candidate / 100.0f;

@@ -80,4 +80,23 @@
 #define CAR_DEFAULT_KP         2.5f
 #define CAR_DEFAULT_KI         0.15f
 #define CAR_DEFAULT_KD         0.0f
+/* 串级 PID：外环位置环用位置式（Car_Pid_*），内环速度环用增量式
+ * （Car_PidInc_*）。内环增益沿用上面的 CAR_DEFAULT_KP/KI/KD，蓝牙命令 4
+ * 和板端 PID 菜单只写内环。
+ *
+ * CAR_CASCADE_OUTER_ENABLE = 0 时外环完全旁路：规划器参考转速直接送内环，
+ * 与改动前的速度闭环行为一致。外环的反馈是累计位置（输出轴圈数），输出是
+ * 内环转速给定；位置目标 position_target[] 目前没有蓝牙协议来源，默认保持
+ * 为 0，启用前必须先接入任务层的位置指令并按实车重新整定外环增益。 */
+#ifndef CAR_CASCADE_OUTER_ENABLE
+#define CAR_CASCADE_OUTER_ENABLE 0
+#endif
+#if CAR_CASCADE_OUTER_ENABLE != 0 && CAR_CASCADE_OUTER_ENABLE != 1
+#error CAR_CASCADE_OUTER_ENABLE must be 0 or 1
+#endif
+/* 外环位置式 PID 的占位增益，单位：Kp 为 rpm/圈，Ki/Kd 沿用 5 ms 离散约定。
+ * 默认全 0，即使误开外环也不会突然驱动车轮；启用前必须重新标定。 */
+#define CAR_POS_DEFAULT_KP     0.0f
+#define CAR_POS_DEFAULT_KI     0.0f
+#define CAR_POS_DEFAULT_KD     0.0f
 #endif

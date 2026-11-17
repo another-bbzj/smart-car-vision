@@ -4,11 +4,12 @@
  * ============================================================================
  * 模块功能
  * ----------------------------------------------------------------------------
- * 本文件实现双轮速度闭环所用的两种纯算法 PID 控制器，不访问任何外设，
+ * 本文件实现双轮串级闭环所用的两种纯算法 PID 控制器，不访问任何外设，
  * 也不直接输出 PWM。每个控制周期的调用关系如下：
  *
  *     Car_Core.c（控制周期任务）
- *         -> Car_Pid_update_dt() 或 Car_PidInc_update_dt()
+ *         -> Car_Pid_update_dt()（外环位置环，默认关闭）
+ *         -> Car_PidInc_update_dt()（内环速度环）
  *         -> 得到带符号的 PWM 数值
  *         -> Car_Hardware.c 把该数值写入电机驱动。
  *
@@ -18,13 +19,14 @@
  *      输出 = P + I + D + 前馈。积分项在结构体中显式累加；比例项支持目标
  *      权重 beta；微分项对“测量值”求导并做一阶低通，因此目标突然变化时
  *      不会产生微分冲击；积分项自身带限幅，并采用条件积分抗饱和。
- *      当前 Car_Core.c 实际使用的就是这一种。
+ *      当前 Car_Core.c 把它用作串级控制的外环位置环；外环默认关闭。
  *
  *   2. 增量式 PID（Car_PidInc_*）
  *      不直接计算绝对输出，而是计算本周期相对上一周期的输出增量 Δu，
  *      再累加到上一周期输出上：u[k] = u[k-1] + Δu[k]。
  *      各项定义、微分滤波、前馈、输出限幅和抗饱和策略都与位置式保持一致，
- *      便于两种算法互换、对比调试。
+ *      便于两种算法互换、对比调试。当前 Car_Core.c 把它用作串级控制的内环
+ *      速度环，蓝牙命令 4 和板端菜单调整的就是这一组增益。
  *
  * 函数列表（按文件内出现顺序）
  * ----------------------------------------------------------------------------
@@ -61,10 +63,11 @@
  *
  * 单位约定
  * ----------------------------------------------------------------------------
- *   目标转速 target、实测转速 measure：rpm；
- *   参考加速度 acceleration：rpm/s；
- *   控制周期 dt：秒；
- *   输出、前馈项和积分项：PWM 数值（NEUQ 库 PWM_MAX = 10000 对应 100%）。
+ *   内环速度环：target、measure 为 rpm，acceleration 为 rpm/s，输出为
+ *               PWM 数值（NEUQ 库 PWM_MAX = 10000 对应 100%）；
+ *   外环位置环：target、measure 为输出轴圈数 rev，acceleration 通常为 0，
+ *               输出为内环转速给定 rpm；
+ *   控制周期 dt：秒。
  *
  * Ki / Kd 的离散约定
  * ----------------------------------------------------------------------------
@@ -144,8 +147,8 @@ static float clip(float x, float limit)
  * 参数说明：p —— 位置式 PID 对象，调用者需保证非空且独占访问。
  * 返回参数：无。
  * 使用示例：
- *     Car_Pid_reset(&car.pid[0]);       // 复位左轮速度环
- *     Car_Pid_reset(&car.pid[1]);       // 复位右轮速度环
+ *     Car_Pid_reset(&car.pid_position[0]);   // 复位左轮外环位置环
+ *     Car_Pid_reset(&car.pid_position[1]);   // 复位右轮外环位置环
  * 备注信息：fault 也会被清除；如果 fault 是配置参数异常引起的，必须先修正
  *           参数，再调用本函数恢复控制。
  */
@@ -263,9 +266,9 @@ uint8_t Car_Pid_configure(Car_Pid_Struct *p, float beta, float tau,
  * 返回参数：[-output_limit, output_limit] 内的 PWM 数值；
  *           输入异常或对象已锁存故障时返回 0。
  * 使用示例：
- *     float pwm = Car_Pid_update_dt(&car.pid[0], 100.0f, speed_rpm,
- *                                   accel_rpm_s, 0.005f);
- *     if (car.pid[0].fault) { Car_Fault(&car, CAR_CONTROLLER_FAULT); }
+ *     float rpm = Car_Pid_update_dt(&car.pid_position[0], 2.0f, position_rev,
+ *                                   0.0f, 0.005f);
+ *     if (car.pid_position[0].fault) { Car_Fault(&car, CAR_CONTROLLER_FAULT); }
  * 备注信息：返回 0 也可能是正常输出（例如目标为零且无扰动），调用者必须
  *           结合 p->fault 判断是否发生故障。故障一旦锁存，后续调用直接
  *           返回 0，直到 reset()。

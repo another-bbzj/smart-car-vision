@@ -236,7 +236,7 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
     </section>
 
     <section class="card">
-      <h2><span class="section-index">02</span>PID 调参 <small>停止时可写 · RAM</small></h2>
+      <h2><span class="section-index">02</span>内环 PID 调参 <small>增量式速度环 · 停止时可写</small></h2>
       <table class="pid">
         <thead><tr><th>轮</th><th>Kp</th><th>Ki</th><th>Kd</th><th></th></tr></thead>
         <tbody>
@@ -256,7 +256,8 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
           </tr>
         </tbody>
       </table>
-      <div class="actual" id="actualPid">实际 PID：等待回传</div>
+      <div class="actual" id="actualPid">实际内环 PID：等待回传</div>
+      <p class="hint">串级结构：外环位置式位置环（默认关闭）→ 内环增量式速度环。此处只写内环增益。</p>
     </section>
   </div>
 
@@ -782,7 +783,7 @@ function onSample(v, state) {
   rPwm.textContent = v[7].toFixed(1) + '%';
 
   actualPid.textContent =
-    `实际 PID：左 ${v[10].toFixed(2)} / ${v[11].toFixed(2)} / ${v[12].toFixed(2)}　` +
+    `实际内环 PID：左 ${v[10].toFixed(2)} / ${v[11].toFixed(2)} / ${v[12].toFixed(2)}　` +
     `右 ${v[13].toFixed(2)} / ${v[14].toFixed(2)} / ${v[15].toFixed(2)}`;
 
   app.series.push({t: now, lRef: v[2], lRpm: v[3], rRef: v[4], rRpm: v[5], lPwm: v[6], rPwm: v[7]});
@@ -839,7 +840,7 @@ function resetTelemetryUi() {
   ageVal.classList.remove('bad');
   lRpm.textContent = lRef.textContent = rRpm.textContent = rRef.textContent = '0.0';
   lPwm.textContent = rPwm.textContent = '0.0%';
-  actualPid.textContent = '实际 PID：等待回传';
+  actualPid.textContent = '实际内环 PID：等待回传';
   rxVal.textContent = '0';
 }
 
@@ -969,7 +970,7 @@ async function writePid(wheel) {
   }
   try {
     if (await send(pidFrame(wheel, kp, ki, kd))) {
-      log(`${wheel ? '右' : '左'}轮 PID 已发送：${kp} / ${ki} / ${kd}，请核对实际 PID 回传`, 'info');
+      log(`${wheel ? '右' : '左'}轮内环 PID 已发送：${kp} / ${ki} / ${kd}，请核对实际内环 PID 回传`, 'info');
     } else {
       log('PID 未发送成功，请检查连接后重试', 'error');
     }
