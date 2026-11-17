@@ -215,9 +215,9 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
         <span id="faultText">故障：--</span>
       </div>
       <div class="speed-row">
-        <label for="rpmRange">速度</label>
-        <input type="range" id="rpmRange" min="20" max="180" step="5" value="60">
-        <input type="number" id="rpmInput" min="20" max="180" step="5" value="60">
+        <label for="rpmRange">目标转速</label>
+        <input type="range" id="rpmRange" min="20" max="750" step="5" value="60">
+        <input type="number" id="rpmInput" min="20" max="750" step="5" value="60">
         <span>rpm</span>
       </div>
       <div class="dpad">
@@ -242,15 +242,15 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
         <tbody>
           <tr>
             <td>左</td>
-            <td><input type="number" id="kp0" min="0" max="655.35" step="0.01" value="2"></td>
-            <td><input type="number" id="ki0" min="0" max="655.35" step="0.01" value="0.12"></td>
+            <td><input type="number" id="kp0" min="0" max="655.35" step="0.01" value="2.5"></td>
+            <td><input type="number" id="ki0" min="0" max="655.35" step="0.01" value="0.15"></td>
             <td><input type="number" id="kd0" min="0" max="655.35" step="0.01" value="0"></td>
             <td><button class="btn small" data-pid="0">写入</button></td>
           </tr>
           <tr>
             <td>右</td>
-            <td><input type="number" id="kp1" min="0" max="655.35" step="0.01" value="2"></td>
-            <td><input type="number" id="ki1" min="0" max="655.35" step="0.01" value="0.12"></td>
+            <td><input type="number" id="kp1" min="0" max="655.35" step="0.01" value="2.5"></td>
+            <td><input type="number" id="ki1" min="0" max="655.35" step="0.01" value="0.15"></td>
             <td><input type="number" id="kd1" min="0" max="655.35" step="0.01" value="0"></td>
             <td><button class="btn small" data-pid="1">写入</button></td>
           </tr>
@@ -332,7 +332,7 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
 <details><summary>连接指南与调试说明</summary><div>
   首次使用：Windows 配对 <code>JDY-31-SPP</code>（PIN 1234）→ 点「选择串口」→「连接」→ 等停止回传 → 勾选安全确认 →「使能」。<br>
   蓝牙 SPP 需要桌面版 <b>Chrome / Edge 117+</b>；更早的浏览器或手机浏览器不会列出蓝牙串口。Win11 若配对后没有出现 COM 口，请到「更多蓝牙选项 → COM 端口」手动添加，或改用旧版「设备和打印机 → 添加设备」完成配对。<br>
-  同一 COM 口不能被其他程序（串口助手、car_host.py）同时占用。固件默认 9600，若模块改成 115200 需同步改 <code>CAR_UART_BAUD</code>。<br>
+  同一 COM 口不能被其他程序（串口助手、car_host.py）同时占用。固件配置为 9600，蓝牙模块的 UART 波特率也必须设置为 9600。<br>
   结束调试时先停止、核对停止回传，再断开串口。关闭 BAT 服务窗口不会自动关闭已打开网页的蓝牙连接。CSV 请在下次连接前导出。
 </div></details>
 </footer>
@@ -344,8 +344,8 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
    协议常量（与 CODE/Car_Core.c 保持一致）
    ============================================================ */
 const CMD_ARM = 1, CMD_STOP = 2, CMD_WHEELS = 3, CMD_PID = 4, CMD_HEARTBEAT = 5;
-const RPM_MIN = 20, RPM_MAX = 180, RPM_LIMIT = 180;
-const BAUD = 9600;
+const RPM_MIN = 20, RPM_MAX = 750, RPM_LIMIT = 750;
+const PWM_LIMIT_PERCENT = 75;
 const TELEMETRY_TAIL = [0x00, 0x00, 0x80, 0x7f];
 const RX_STALE_MS = 350;
 const TX_PERIOD_MS = 100;
@@ -355,7 +355,8 @@ const WINDOW_MS = 10000;
 
 const STATES = ['停止', '运行', '故障'];
 const FAULTS = {0:'正常', 1:'通信超时', 2:'堵转/编码器无反馈', 3:'反馈方向异常',
-                4:'串口错误/溢出', 5:'控制周期异常', 6:'控制器参数/数值异常'};
+                4:'串口错误/溢出', 5:'控制周期异常', 6:'控制器参数/数值异常',
+                7:'比赛故障', 8:'测得转速过高'};
 const RESULTS = {0:'成功', 1:'状态不允许', 2:'参数无效', 3:'帧无效'};
 
 const $ = id => document.getElementById(id);
@@ -665,6 +666,7 @@ async function readLoop() {
         if (done) break;
         if (value && value.length) {
           app.rxBytes += value.length;
+          rxVal.textContent = app.rxBytes.toLocaleString('zh-CN');
           feed(value);
         }
       }
@@ -735,6 +737,7 @@ function parseSample(chunk) {
   if (!Number.isInteger(v[1]) || !(v[1] in FAULTS) ||
       !Number.isInteger(v[8]) || !(v[8] in RESULTS) ||
       !Number.isInteger(v[9]) || v[9] < 0 ||
+      Math.abs(v[6]) > PWM_LIMIT_PERCENT || Math.abs(v[7]) > PWM_LIMIT_PERCENT ||
       v.slice(10).some(gain => gain < 0 || gain > 655.36)) return;
   onSample(v, state);
 }
@@ -1279,7 +1282,7 @@ setInterval(() => {
 
   if (!app.lastSample && !app.noTelemetryWarned && performance.now() - app.connectAt > 2000) {
     app.noTelemetryWarned = true;
-    log('已连接但 2 秒内没有回传：检查波特率、蓝牙配对和 COM 口', 'warn');
+    log(app.rxBytes ? '已收到字节，但 2 秒内没有有效回传帧：检查波特率、固件和数据格式' : '已连接但 2 秒内没有收到字节：检查车端发送、接线、蓝牙配对和 COM 口', 'warn');
   }
 
   if ((app.armed || app.pendingArm) && age > RX_STALE_MS) {

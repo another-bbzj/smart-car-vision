@@ -2,6 +2,8 @@
 #define CAR_HARDWARE_H
 #include <stdint.h>
 #include "Car_Vision.h"
+/* Called at main entry, before configuring the system clock. */
+void Car_HoldMotorsOff(void);
 /**
  * @brief 底盘入口：初始化控制器、FIFO、GPIO、PWM、编码器及串口，最后启动 PIT。
  * @note 由 User_Main 调用一次；随后永久循环发送遥测，正常不会返回。

@@ -20,7 +20,7 @@ wsl --cd /mnt/d/smart_car -- bash Tools/check_race.sh
 
 ## 下载、接线与发车
 
-1. 将按本车参数编译的 HEX 烧入 F407。香橙派 3.3 V TTL TX 接 F407 PB11，共地，115200 8N1。按编码器接线图，红、白接电机驱动器的两路电机输出，蓝接编码器 3.3 V，黑接共地。黄线为 A 相，绿线为 B 相，左轮依次接 TIM4 的 PB6/PB7，右轮依次接 TIM3 的 PA6/PA7。保持 Flash 片选 PB0 为高。LCD 独占 SPI3。本车选用 MPU6050，I²C3 的 SCL 接 PA8、SDA 接 PC9，固件使用 7 位地址 0x68。调试输出使用 USART1 的 PA9/PA10。
+1. 将按本车参数编译的 HEX 烧入 F407。香橙派 3.3 V TTL TX 接 F407 PB11，共地，115200 8N1。按编码器接线图，红、白接电机驱动器的两路电机输出，蓝接编码器 3.3 V，黑接共地。黄线为 A 相，绿线为 B 相，左轮依次接 TIM4 的 PB6/PB7，右轮依次接 TIM3 的 PA6/PA7。保持 Flash 片选 PB0 为高。LCD 独占 SPI3。本车选用 MPU6050，I²C3 的 SCL 接 PA8、SDA 接 PC9，固件使用 7 位地址 0x68。蓝牙独占 USART1（PA9 TX / PA10 RX，9600 8N1）。
 2. 固定相机和轮胎，在板上进入 `vision_inspection/vision`。以实际设备名替换下方示例的 `/dev/ttyS1`。先给 F407 上电，保持车体静止，再运行发送器。MPU6050 初始化后至少需要约 1 秒静止时间来采集 100 个有效样本并估计零偏。
 
    ```bash

@@ -29,7 +29,7 @@
 * 日期              作者                备注
 * 2025-09-05        张瑞        first version
 ********************************************************************************************************************/
-#include "NEUQ_lib_include.h"
+#include "NEUQ_Delay.h"
 
 //-------------------------------------------------------------------------------------------------------------------
 //  函数简介      system 延迟初始化函数
@@ -39,8 +39,9 @@
 void NEUQ_Delay_init(void)
 {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; /**< 使能DWT外设 */
-    DWT->CYCCNT = 0;                                /**< 计数器清零 */
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;            /**< 使能计数器 */
+    __DSB();
+    __ISB();
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -51,8 +52,14 @@ void NEUQ_Delay_init(void)
 //-------------------------------------------------------------------------------------------------------------------
 void NEUQ_Delay_us(uint32_t us)
 {
-    uint32_t start = DWT->CYCCNT;
+    uint32_t start;
     uint32_t ticks = us * (SystemCoreClock / 1000000);
+    /* 外设也可在应用启动前调用延时。独立上电时须先打开两个硬件开关。 */
+    if (!(CoreDebug->DEMCR & CoreDebug_DEMCR_TRCENA_Msk) ||
+        !(DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk)) {
+        NEUQ_Delay_init();
+    }
+    start = DWT->CYCCNT;
     while ((DWT->CYCCNT - start) < ticks);
 }
 

@@ -3,14 +3,24 @@
 
 /* 按参考原理图约定：通道 1 为左轮，通道 2 为右轮。
  * 实际轮位、方向电平及编码器符号需在车轮架空时核对。 */
-/* NEUQ 库设备索引：3 对应蓝牙 UART4，2 对应视觉 USART3。 */
-#define CAR_UART_INDEX          3
+/* 本板固定接线：蓝牙独占 UART_0（USART1，PA9 TX / PA10 RX）。 */
+#define CAR_UART_INDEX          0
 #define CAR_UART_BAUD           UART_BAUD_9600
-/* 香橙派视觉独立串口：USART3，PB10 TX / PB11 RX。 */
+/* 临时诊断：1 = 不做任何外设初始化，只用忙等闪核心板 LED2(PA8)，
+ * 用于确证独立上电时 MCU 是否在执行本固件。测完改回 0。 */
+#define CAR_LED_TEST            0
+/* 香橙派视觉串口：USART3，PB10 TX / PB11 RX。
+ * 与蓝牙分属不同串口，可同时启用。 */
 #define CAR_VISION_UART_INDEX   2
 #define CAR_VISION_UART_BAUD    UART_BAUD_115200
-#if CAR_UART_INDEX != 3 || CAR_VISION_UART_INDEX != 2
-#error This board adapter currently supports Bluetooth UART4 and vision USART3 only
+#ifndef CAR_VISION_ENABLE
+#define CAR_VISION_ENABLE       1
+#endif
+#if CAR_UART_INDEX != 0 || CAR_VISION_UART_INDEX != 2
+#error This board requires UART_0 for Bluetooth and UART_2 for vision
+#endif
+#if CAR_VISION_ENABLE != 0 && CAR_VISION_ENABLE != 1
+#error CAR_VISION_ENABLE must be 0 or 1
 #endif
 #define CAR_MOTOR_NOLOAD_RPM    1000.0f /* 用户给定的输出轴空载转速；指令限速由 CAR_RPM_LIMIT 决定。 */
 #define CAR_FLASH_CS            PB0  /* V2 核心板 W25Q 片选；复用 PA5/6/7 前拉高 */
@@ -22,7 +32,7 @@
 #define CAR_LEFT_FORWARD_HIGH   1
 #define CAR_RIGHT_FORWARD_HIGH  1
 #define CAR_LEFT_ENCODER_INVERT 1
-#define CAR_RIGHT_ENCODER_INVERT 1
+#define CAR_RIGHT_ENCODER_INVERT 0
 #define CAR_PWM_HZ              8000U
 /* 标称控制周期 5 ms；每 20 次控制周期发送一次遥测，标称 100 ms。 */
 #define CAR_PERIOD_MS           5U
@@ -67,7 +77,7 @@
 #define CAR_STALL_TIMEOUT_MS    1500U
 #define CAR_DIRECTION_TIMEOUT_MS 1000U
 /* Ki/Kd 沿用 5 ms 离散增益，具体换算见 Car_PID.h。 */
-#define CAR_DEFAULT_KP         2.0f
-#define CAR_DEFAULT_KI         0.12f
+#define CAR_DEFAULT_KP         2.5f
+#define CAR_DEFAULT_KI         0.15f
 #define CAR_DEFAULT_KD         0.0f
 #endif

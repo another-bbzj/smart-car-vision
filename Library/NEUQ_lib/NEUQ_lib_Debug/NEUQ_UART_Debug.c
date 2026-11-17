@@ -33,12 +33,18 @@
 // #include "stdio.h"
 
 
+static uint8_t debug_output_enabled = 1;
+
+void NEUQ_Debug_set_output_enabled(uint8_t enabled) {
+    debug_output_enabled = enabled;
+}
+
 void NEUQ_Debug_init(void){
     NEUQ_Uart_init(UART_0,UART_BAUD_115200);
 }
 
 int fputc(int ch, FILE *f) {
-    NEUQ_Uart_write_byte(UART_0,(uint8_t)ch);
+    if (debug_output_enabled) NEUQ_Uart_write_byte(UART_0,(uint8_t)ch);
     return ch;
 }
 

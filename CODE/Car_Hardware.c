@@ -19,8 +19,8 @@
  *   - TIM8_CH1 / TIM2_CH3：左右轮 PWM；
  *   - PC7 / PA5：左右轮方向引脚（PA5 与 Flash 片选复用，初始化时先拉高 CS）；
  *   - TIM4 / TIM3：左右轮正交编码器；
- *   - UART4：蓝牙 JDY-31，NEUQ 库设备索引 3；
- *   - USART3：香橙派视觉串口，NEUQ 库设备索引 2；
+ *   - USART1：蓝牙 JDY-31，NEUQ 库设备索引 0（PA9 TX / PA10 RX）；
+ *   - USART3：香橙派视觉串口，NEUQ 库设备索引 2（PB10 TX / PB11 RX）；
  *   - TIM5：1 MHz 自由运行计数器，用于测量真实控制周期；
  *   - PIT_CH1：5 ms 控制节拍，实际周期由 TIM5 修正。
  *
@@ -73,20 +73,18 @@
 #include <string.h>
 #include "My_Vofa.h"
 
-/* NEUQ 库内部接口：声明在此以便直接为指定串口打开单字节接收中断。 */
-void NEUQ_Uart_Enable_RX_Interrupt(UART_DEV_ENUM dev, uint8_t priority);
-
-/* 蓝牙 UART4 的 HAL 句柄和单字节接收缓存，来源：NEUQ 库串口初始化。 */
-extern UART_HandleTypeDef UART_3_handle;
-extern uint8_t UART_3_RX_dat;
-
-/* 视觉 USART3 的 HAL 句柄和单字节接收缓存，来源：NEUQ 库串口初始化。 */
+/* NEUQ 驱动持有单字节接收缓冲，错误恢复须复用同一缓冲。 */
+extern UART_HandleTypeDef UART_0_handle;
+extern uint8_t UART_0_RX_dat;
+#if CAR_VISION_ENABLE
 extern UART_HandleTypeDef UART_2_handle;
 extern uint8_t UART_2_RX_dat;
+#endif
 
 /* 左右轮编码器定时器句柄，来源：NEUQ_Encoder_init 初始化。 */
 extern TIM_HandleTypeDef Encoder_TIM3_Handle;
 extern TIM_HandleTypeDef Encoder_TIM4_Handle;
+
 
 /* ========================================================================== */
 /*                             模块内部静态变量                                */
@@ -511,7 +509,7 @@ static int32_t delta_count(unsigned i, TIM_HandleTypeDef *timer)
 /*
  * 函数名称：Car_UART_RX_Handler
  * 函数功能：蓝牙串口单字节接收回调，只把字节写入接收 FIFO。
- * 参数说明：byte —— 刚收到的原始字节，来源：UART4 接收中断。
+ * 参数说明：byte —— 刚收到的原始字节，来源：蓝牙串口接收中断。
  * 返回参数：无。
  * 使用示例：
  *     // 由 NEUQ 库串口接收回调自动触发
@@ -614,21 +612,23 @@ uint8_t Car_GetVisionTile(uint8_t index, CarVisionTile *out)
  * 返回参数：无。
  * 使用示例：
  *     // HAL 在串口错误时自动调用，业务代码无需手动调用
- *     // UART4 错误 -> rx_fault = 1；USART3 错误 -> vision_rx_fault = 1
+ *     // 蓝牙串口错误 -> rx_fault = 1；视觉串口错误 -> vision_rx_fault = 1
  * 备注信息：蓝牙异常交由 PIT 停车处理，视觉异常只使缓存失效。
  */
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    if (huart->Instance == UART4)
+    if (huart == &UART_0_handle)
     {
         rx_fault = 1;           /* 蓝牙通道异常 */
-        HAL_UART_Receive_IT(&UART_3_handle, &UART_3_RX_dat, 1);
+        HAL_UART_Receive_IT(&UART_0_handle, &UART_0_RX_dat, 1);
     }
-    else if (huart->Instance == USART3)
+#if CAR_VISION_ENABLE
+    else if (huart == &UART_2_handle)
     {
         vision_rx_fault = 1;    /* 视觉通道异常 */
         HAL_UART_Receive_IT(&UART_2_handle, &UART_2_RX_dat, 1);
     }
+#endif
 }
 
 /* ========================================================================== */
@@ -853,8 +853,10 @@ static void poll_params(void)
     NEUQ_FIFO_init(&vision_fifo,vision_buffer,sizeof vision_buffer);
     rx_fault=vision_rx_fault=0;
     /* Clear hardware bytes left over while Flash blocked the CPU. */
-    __HAL_UART_CLEAR_OREFLAG(&UART_3_handle);
+    __HAL_UART_CLEAR_OREFLAG(&UART_0_handle);
+#if CAR_VISION_ENABLE
     __HAL_UART_CLEAR_OREFLAG(&UART_2_handle);
+#endif
     CarVision_Invalidate(&vision);
     gyro_valid=0;
     My_Key_clear_events();
@@ -864,9 +866,42 @@ static void poll_params(void)
     __set_PRIMASK(mask);
 }
 
+void Car_HoldMotorsOff(void)
+{
+    /* Both EN inputs on the reference driver are active high. Take control
+     * before clock setup, parameter loading, or the LED diagnostic loop. */
+    NEUQ_GPIO_init(PC6, GPIO_Mode_Output_PushPull, GPIO_Low);
+    NEUQ_GPIO_init(PA2, GPIO_Mode_Output_PushPull, GPIO_Low);
+}
+
 void Car_Main(void)
 {
-    unsigned i;                                    /* 双轮循环下标 */
+    unsigned i;
+
+
+#if CAR_LED_TEST
+    /*
+     * 最小自检：完全不依赖 SysTick/HAL/中断，只用忙等翻转 PA8。
+     * 独立上电后 LED2 闪烁 = MCU 在执行本固件；不闪 = 启动/烧录问题。
+     */
+    {
+        volatile uint32_t d;
+
+        NEUQ_GPIO_init(PA8, GPIO_Mode_Output_PushPull, GPIO_High);
+        for (;;)
+        {
+            NEUQ_GPIO_write(PA8, GPIO_Low);
+            for (d = 0U; d < 2000000U; d++) { }
+            NEUQ_GPIO_write(PA8, GPIO_High);
+            for (d = 0U; d < 2000000U; d++) { }
+        }
+    }
+#endif
+
+    /* 独立上电也要在首个外设延时之前使能 DWT。 */
+    NEUQ_Delay_init();
+    /* 由蓝牙独占 USART1，在初始化 LCD/I²C 之前关闭 printf。 */
+    NEUQ_Debug_set_output_enabled(0);
 
     Car_Init(&car);                                /* 初始化控制对象 */
     {
@@ -874,7 +909,6 @@ void Car_Main(void)
         params_saved=loaded==1 && CarParams_Apply(&car,&saved_params);
         menu.params_status=params_saved ? PARAMS_LOADED : (loaded==0 ? PARAMS_DEFAULTS : PARAMS_ERROR);
     }
-    NEUQ_Debug_init(); /* LCD/I2C drivers print through USART1 during startup. */
     CarVision_Init(&vision);                       /* 初始化视觉解析器 */
     My_Key_init();
 
@@ -887,10 +921,9 @@ void Car_Main(void)
 
     for (i = 0; i < 2; i++)
     {
-        /* 方向引脚初始电平按“前进”配置，PWM 初始占空比为 0。 */
-        NEUQ_GPIO_init(dir_pin[i],
-                       GPIO_Mode_Output_PushPull,
-                       forward_high[i] ? GPIO_High : GPIO_Low);
+        /* Keep both control inputs low until a wheel command sets direction. */
+        NEUQ_GPIO_init(dir_pin[i], GPIO_Mode_Output_PushPull, GPIO_Low);
+        reverse[i] = forward_high[i];
         NEUQ_PWM_init(pwm[i], CAR_PWM_HZ, 0);
     }
 
@@ -905,15 +938,17 @@ void Car_Main(void)
     previous[0] = (uint16_t)__HAL_TIM_GET_COUNTER(&Encoder_TIM4_Handle);
     previous[1] = (uint16_t)__HAL_TIM_GET_COUNTER(&Encoder_TIM3_Handle);
 
-    NEUQ_Uart_init((UART_DEV_ENUM)CAR_UART_INDEX, CAR_UART_BAUD);
-    My_Vofa_init(CAR_UART_INDEX);
-    NEUQ_Uart_Enable_RX_Interrupt((UART_DEV_ENUM)CAR_UART_INDEX, 3);
-
+#if CAR_VISION_ENABLE
     NEUQ_Uart_init((UART_DEV_ENUM)CAR_VISION_UART_INDEX, CAR_VISION_UART_BAUD);
     NEUQ_Uart_Enable_RX_Interrupt((UART_DEV_ENUM)CAR_VISION_UART_INDEX, 4);
+#endif
 
     My_Lcd_init();
     gyro_present = NEUQ_MPU6050_init();
+    /* Begin accepting commands only after the slow startup operations. */
+    NEUQ_Uart_init((UART_DEV_ENUM)CAR_UART_INDEX, CAR_UART_BAUD);
+    My_Vofa_init(CAR_UART_INDEX);
+    NEUQ_Uart_Enable_RX_Interrupt((UART_DEV_ENUM)CAR_UART_INDEX, 3);
     control_clock_ready = init_control_clock();    /* 启动微秒时基 */
     last_control_us = control_clock_ready
                     ? __HAL_TIM_GET_COUNTER(&control_clock)

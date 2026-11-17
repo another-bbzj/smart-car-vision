@@ -124,9 +124,9 @@ flowchart TD
 | 右电机 PWM / DIR | TIM2_CH3 PA2 / PA5 | PA5 与外部 Flash SPI1 冲突 |
 | 左编码器 A/B | TIM4 PB6/PB7 | 正交四倍频 |
 | 右编码器 A/B | TIM3 PA6/PA7 | 与外部 Flash SPI1 冲突 |
-| 蓝牙 | UART4 PC10 TX / PC11 RX，9600 8N1 | NEUQ 库索引 `UART_3` / `CAR_UART_INDEX=3` |
-| 香橙派视觉 | USART3 PB10 TX / PB11 RX，115200 8N1 | NEUQ 索引 `UART_2`；香橙派 TX 接 PB11，共地、3.3 V TTL |
-| 调试打印 | USART1 PA9/PA10 | `NEUQ_Debug_init()` 先于会打印的 LCD/I²C 初始化 |
+| 蓝牙 | USART1 PA9 TX / PA10 RX，9600 8N1 | NEUQ 库索引 `UART_0` / `CAR_UART_INDEX=0` |
+| 香橙派视觉 | USART3 PB10 TX / PB11 RX，115200 8N1 | NEUQ 索引 `UART_2`；与蓝牙分属不同串口，可同时启用 |
+| 调试打印 | 关闭 | USART1 由蓝牙独占，LCD/I²C 初始化时的 printf 不发送到串口 |
 | MPU6050 | I²C3 PA8 SCL / PC9 SDA，400 kHz | 7 位地址 0x68；库宏使用移位地址 `0x68 << 1` |
 | LCD | SPI3 PB3 SCK、PB5 MOSI、PB4 CS | DC=PD5，BL=PD3，RST=PE2 |
 | 四个按键 | PE10 上、PE8 下、PE7 确认、PE9 返回 | 均低有效；运行/故障时 PE10 优先停车/清故障 |

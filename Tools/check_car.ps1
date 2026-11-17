@@ -22,6 +22,14 @@ try {
     }
     python -m unittest discover -s Tests -p 'test_*.py' -v
     if ($LASTEXITCODE -ne 0) { throw 'Python tests failed' }
+    node --test Tests/test_car_console.cjs
+    if ($LASTEXITCODE -ne 0) { throw 'Console tests failed' }
+    foreach ($visionEnabled in 0, 1) {
+        clang -std=c99 -Wall -Wextra -Werror "-DCAR_VISION_ENABLE=$visionEnabled" -I Tests/stubs -I CODE -I User -I Library/NEUQ_lib/NEUQ_lib_Driver Tests/test_car_startup.c Library/NEUQ_lib/NEUQ_lib_Driver/NEUQ_Delay.c User/NEUQ_Interrupts.c -o build/test_car_startup.exe
+        if ($LASTEXITCODE -ne 0) { throw 'Startup test compilation failed' }
+        & (Join-Path $carOutput 'test_car_startup.exe')
+        if ($LASTEXITCODE -ne 0) { throw "Cold start / UART routing failed (vision=$visionEnabled)" }
+    }
     clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_core.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_core.exe
     if ($LASTEXITCODE -ne 0) { throw 'Core test compilation failed' }
     & (Join-Path $carOutput 'test_car_core.exe')
@@ -46,6 +54,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Sudoku test compilation failed' }
     & (Join-Path $carOutput 'test_car_sudoku.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Sudoku tests failed' }
+    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_race.c CODE/Car_Race.c CODE/Car_Sudoku.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_race.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Race test compilation failed' }
+    & (Join-Path $carOutput 'test_car_race.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Race tests failed' }
     $carProject = Join-Path $carRoot 'MDK-ARM/NEUQ_STM32F407VET6_Opensource_Library.uvprojx'
     $carLog = Join-Path $carOutput 'keil_car.log'
     if (!(Test-Path -LiteralPath $Keil)) { throw "Keil executable missing: $Keil" }

@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "NEUQ_Main.h"
+#include "Car_Hardware.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -64,7 +65,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+  Car_HoldMotorsOff();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/

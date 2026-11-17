@@ -136,6 +136,7 @@ static void reset_motion(Car_Core *c)
         c->reference[i] = 0.0f;                      /* 参考转速清零 */
         c->output[i] = 0.0f;                         /* 控制输出清零 */
         c->stall_us[i] = 0;                          /* 堵转计时清零 */
+        c->overspeed_us[i] = 0;
         c->direction_us[i] = 0;                      /* 方向异常计时清零 */
         c->slow_speed[i] = absolute(c->speed[i]);    /* 慢速滤波重新播种 */
         Car_Pid_reset(&c->pid[i]);                   /* 清除速度环历史与故障 */
@@ -480,6 +481,12 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
 
         case 2:
             /* 状态 2：接收命令号，并开始累计 CRC。 */
+            if (byte < 1 || byte > 5)
+            {
+                c->result = 3;
+                c->parse_state = (byte == 0xC3) ? 1 : 0;
+                break;
+            }
             c->cmd = byte;                           /* 保存命令号 */
             c->crc = Car_Crc8(0, byte);              /* CRC 从命令字节开始 */
             c->parse_state = 3;
@@ -487,7 +494,7 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
 
         case 3:
             /* 状态 3：接收长度；命令号或长度非法时丢弃当前帧。 */
-            if (c->cmd < 1 || c->cmd > 5 || byte != lengths[c->cmd])
+            if (byte != lengths[c->cmd])
             {
                 c->parse_state = (byte == 0xC3) ? 1 : 0;
                 c->result = 3;                       /* 帧格式错误 */
@@ -656,6 +663,20 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
 
         abs_speed = absolute(c->speed[i]);        /* 取实测转速绝对值 */
 
+        /* Sustained overspeed stops both wheels. */
+        if (abs_speed > CAR_RPM_LIMIT + 120.0f)
+        {
+            c->overspeed_us[i] += dt_us;
+            if (c->overspeed_us[i] >= 100000U)
+            {
+                Car_Fault(c, CAR_OVERSPEED_FAULT);
+                return;
+            }
+        }
+        else
+        {
+            c->overspeed_us[i] = 0;
+        }
         /* 转速慢速滤波：0.095 s 时间常数，用于识别换向时是否仍在减速。 */
         c->slow_speed[i] += (dt / (0.095f + dt)) *
                             (abs_speed - c->slow_speed[i]);
@@ -683,13 +704,12 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
 
         /*
          * 方向异常判断：
-         * 参考方向、输出方向都与实测转速方向相反，输出接近限幅且转速较高，
+         * 参考方向、输出方向都与实测转速方向相反，且转速较高，
          * 并持续超过阈值时间，说明车轮可能被卡住或接线方向错误。
          * slow_speed 用于排除明显减速过程中的正常换向；条件中断即清除计时。
          */
         if (c->reference[i] * c->speed[i] < 0.0f &&
             c->output[i] * c->speed[i] < 0.0f &&
-            absolute(c->output[i]) > 0.9f * CAR_PWM_LIMIT &&
             abs_speed > 100.0f &&
             abs_speed >= c->slow_speed[i] - 5.0f)
         {

@@ -2,7 +2,7 @@
 """Bluetooth SPP differential-drive console. Run: python Tools/car_host.py
 
 Requires pyserial for serial communication; tkinter is included with standard
-Windows Python. Firmware default: UART4 9600 baud.
+Windows Python. Firmware default: NEUQ UART_0 (USART1), 9600 baud.
 """
 import argparse
 import csv
@@ -17,7 +17,7 @@ CHANNELS = ['state', 'fault', 'left_ref', 'left_rpm', 'right_ref', 'right_rpm',
             'left_pwm', 'right_pwm', 'result', 'frames',
             'left_kp', 'left_ki', 'left_kd', 'right_kp', 'right_ki', 'right_kd']
 FAULTS = {0: '正常', 1: '通信超时', 2: '堵转/编码器无反馈', 3: '反馈方向异常', 4: '串口错误/溢出',
-          5: '控制周期异常', 6: '控制器参数/数值异常'}
+          5: '控制周期异常', 6: '控制器参数/数值异常', 7: '比赛故障', 8: '测得转速过高'}
 
 
 def crc8(data):
@@ -35,8 +35,8 @@ def packet(cmd, data=b''):
 
 
 def wheels(left, right):
-    if any(not isinstance(x, int) or abs(x) > 180 for x in (left, right)):
-        raise ValueError('轮速必须是 -180~180 的整数 rpm')
+    if any(not isinstance(x, int) or abs(x) > 750 for x in (left, right)):
+        raise ValueError('轮速必须是 -750~750 的整数 rpm')
     return packet(3, struct.pack('>hh', left, right))
 
 
@@ -125,7 +125,7 @@ class Console:
         tk.Button(actions, text='停止 / 清故障 [空格]', bg='#b42318', fg='white', command=self.stop).pack(side='left', padx=12)
         self.rpm = tk.IntVar(value=60)
         ttk.Label(actions, text='速度 rpm').pack(side='left')
-        ttk.Spinbox(actions, from_=20, to=180, increment=10, textvariable=self.rpm, width=6).pack(side='left', padx=6)
+        ttk.Spinbox(actions, from_=20, to=750, increment=10, textvariable=self.rpm, width=6).pack(side='left', padx=6)
         drive = ttk.Frame(panel)
         drive.pack(pady=4)
         for text, key, row, col in [('前进 W / ↑', 'w', 0, 1), ('左转 A / ←', 'a', 1, 0),
@@ -138,13 +138,13 @@ class Console:
         ttk.Label(panel, textvariable=self.status, wraplength=700).pack(anchor='w', pady=12)
         self.values = tk.StringVar(value='等待回传…')
         ttk.Label(panel, textvariable=self.values, font=('Consolas', 12)).pack(anchor='w')
-        tuning = ttk.LabelFrame(panel, text='停车后分别调整左右轮 PID（仅 RAM，上电恢复默认）', padding=10)
+        tuning = ttk.LabelFrame(panel, text='停车后分别调整左右轮 PID（写入 RAM，重启加载已保存值或默认值）', padding=10)
         tuning.pack(fill='x', pady=14)
         self.pid_entries = []
         for wheel, label in enumerate(('左轮', '右轮')):
             ttk.Label(tuning, text=label).grid(row=wheel, column=0, padx=6)
             entries = []
-            for col, (name, default) in enumerate(zip(('Kp', 'Ki', 'Kd'), ('2', '0.12', '0'))):
+            for col, (name, default) in enumerate(zip(('Kp', 'Ki', 'Kd'), ('2.5', '0.15', '0'))):
                 ttk.Label(tuning, text=name).grid(row=wheel, column=col * 2 + 1)
                 entry = ttk.Entry(tuning, width=8)
                 entry.insert(0, default)
@@ -274,14 +274,14 @@ class Console:
             return
         try:
             rpm = self.rpm.get()
-            if not 20 <= rpm <= 180:
+            if not 20 <= rpm <= 750:
                 raise ValueError()
             forward = int('w' in self.keys) - int('s' in self.keys)
             left = int('a' in self.keys) - int('d' in self.keys)
             self.send(wheels(*mix(forward, left, rpm)))
         except (ValueError, self.tk.TclError):
             self.stop()
-            self.status.set('速度必须为 20~180 的整数 rpm')
+            self.status.set('速度必须为 20~750 的整数 rpm')
 
     def poll(self):
         now = time.monotonic()

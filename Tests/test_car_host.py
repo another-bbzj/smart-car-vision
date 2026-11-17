@@ -15,7 +15,8 @@ class ProtocolTests(unittest.TestCase):
 
     def test_signed_and_range(self):
         self.assertEqual(host.wheels(80, -80)[4:8], struct.pack('>hh', 80, -80))
-        with self.assertRaises(ValueError): host.wheels(181, 0)
+        self.assertEqual(host.wheels(750, -750)[4:8], struct.pack('>hh', 750, -750))
+        with self.assertRaises(ValueError): host.wheels(751, 0)
 
     def test_pid_validation(self):
         self.assertEqual(host.pid_packet(1, '2', '.12', '0')[4:-1], bytes.fromhex('01 00 c8 00 0c 00 00'))

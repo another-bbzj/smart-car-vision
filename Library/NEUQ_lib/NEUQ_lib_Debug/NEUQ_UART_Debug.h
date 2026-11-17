@@ -32,7 +32,10 @@
 #ifndef _NEUQ_UART_DEBUG_H_
 #define _NEUQ_UART_DEBUG_H_
 
+#include <stdint.h>
+
 void NEUQ_Debug_init(void);
+void NEUQ_Debug_set_output_enabled(uint8_t enabled);
 
 #endif 
 

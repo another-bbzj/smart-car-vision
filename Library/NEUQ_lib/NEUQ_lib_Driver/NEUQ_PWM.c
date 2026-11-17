@@ -107,7 +107,6 @@ void NEUQ_PWM_init(PWM_Ports_ENUM PWM_Port_select,uint32_t frequency,uint32_t du
     GPIO_initure.Mode = GPIO_MODE_AF_PP;
     GPIO_initure.Speed = GPIO_SPEED_FREQ_HIGH;
     GPIO_initure.Alternate=AF_use;
-    HAL_GPIO_Init(gpio_group, &GPIO_initure);
 
     /*配置定时器设置*/
 
@@ -137,6 +136,8 @@ void NEUQ_PWM_init(PWM_Ports_ENUM PWM_Port_select,uint32_t frequency,uint32_t du
     sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;  // 禁用快速模式
     HAL_TIM_PWM_ConfigChannel(Handle_use, &sConfigOC, Channel_use);
     HAL_TIM_PWM_Start(Handle_use, Channel_use);
+    /* Keep the existing GPIO level until the timer drives the requested duty. */
+    HAL_GPIO_Init(gpio_group, &GPIO_initure);
 }
 
 //============================================================================

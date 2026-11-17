@@ -32,7 +32,7 @@
 ********************************************************************************************************************/
 #ifndef _NEUQ_INTERRUPTS_H_
 #define _NEUQ_INTERRUPTS_H_
-#include "stm32f4xx_hal.h"
+#include <stdint.h>
 
 void NEUQ_PIT_1_CALLBACK(void);
 void NEUQ_PIT_2_CALLBACK(void);

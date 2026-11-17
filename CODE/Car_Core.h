@@ -43,7 +43,8 @@ enum
     CAR_RX_FAULT,        /* 4：蓝牙接收异常 */
     CAR_TIMING_FAULT,    /* 5：控制周期异常 */
     CAR_CONTROLLER_FAULT, /* 6：控制器配置或数值异常 */
-    CAR_RACE_FAULT        /* 7：比赛观测失效或动作越界 */
+    CAR_RACE_FAULT,       /* 7：比赛观测失效或动作越界 */
+    CAR_OVERSPEED_FAULT   /* 8：测得转速持续过高 */
 };
 
 /*
@@ -74,6 +75,7 @@ typedef struct
     uint32_t link_us;        /* 运行通信看门狗计时 */
     uint32_t stall_us[2];    /* 左右轮堵转计时 */
     uint32_t direction_us[2];/* 左右轮方向异常计时 */
+    uint32_t overspeed_us[2]; /* 左右轮超速计时 */
     uint32_t frame_us;       /* 蓝牙帧字节间隔计时 */
 
     /* 双轮共享进度的五次参考规划器，生成 reference 和参考加速度。 */

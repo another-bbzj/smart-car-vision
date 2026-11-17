@@ -47,7 +47,7 @@
  *     外部中断         -> 本车暂未使用，保留空回调
  *
  * 串口编号由 Car_Config.h 的 CAR_UART_INDEX / CAR_VISION_UART_INDEX 决定：
- *   - 蓝牙使用 UART4（NEUQ 库索引 3）；
+ *   - 蓝牙使用 USART1（NEUQ 库索引 0）；
  *   - 视觉使用 USART3（NEUQ 库索引 2）；
  *   - 其余串口接收回调留空，避免未配置的串口误入控制逻辑。
  *
@@ -57,14 +57,6 @@
  *       —— PIT_CH1 周期中断入口，转交 Car_PIT_Handler()。
  *   void NEUQ_PIT_2_CALLBACK(void)
  *       —— PIT_CH2 保留入口，当前未使用。
- *   void TS_UART_0_RX_CALLBACK(uint8_t dat)
- *       —— 串口 0 接收回调；仅当蓝牙配置为串口 0 时转交蓝牙处理。
- *   void TS_UART_1_RX_CALLBACK(uint8_t dat)
- *       —— 串口 1 接收回调；仅当蓝牙配置为串口 1 时转交蓝牙处理。
- *   void TS_UART_2_RX_CALLBACK(uint8_t dat)
- *       —— 串口 2（USART3）接收回调，固定转交视觉处理。
- *   void TS_UART_3_RX_CALLBACK(uint8_t dat)
- *       —— 串口 3（UART4）接收回调；仅当蓝牙配置为串口 3 时转交蓝牙处理。
  *   void NEUQ_EXTI0_Callback(void) ~ void NEUQ_EXTI15_Callback(void)
  *       —— 外部中断 0~15 保留入口，当前全部为空。
  *
@@ -75,7 +67,7 @@
  * ============================================================================
  */
 
-#include "../Library/NEUQ_lib/NEUQ_lib_include.h"
+#include "NEUQ_Interrupts.h"
 #include "Car_Hardware.h"
 #include "Car_Config.h"
 
@@ -117,77 +109,28 @@ void NEUQ_PIT_2_CALLBACK(void)
 /*                              串口接收分发                                   */
 /* ========================================================================== */
 
-/*
- * 函数名称：TS_UART_0_RX_CALLBACK
- * 函数功能：串口 0 接收回调；仅当 CAR_UART_INDEX == 0 时才作为蓝牙数据。
- * 参数说明：dat —— 收到的原始字节，来源：串口接收中断。
- * 返回参数：无。
- * 使用示例：
- *     // 由 NEUQ 库串口接收中断自动调用
- *     // 当前配置 CAR_UART_INDEX == 3，本回调只执行 (void)dat;
- * 备注信息：非蓝牙配置下显式丢弃，避免误入协议解析。
- */
 void TS_UART_0_RX_CALLBACK(uint8_t dat)
 {
-#if CAR_UART_INDEX == 0
-    Car_UART_RX_Handler(dat);    /* 转交蓝牙接收 */
-#else
-    (void)dat;                   /* 未使用，显式丢弃 */
-#endif
+    Car_UART_RX_Handler(dat);
 }
 
-/*
- * 函数名称：TS_UART_1_RX_CALLBACK
- * 函数功能：串口 1 接收回调；仅当 CAR_UART_INDEX == 1 时才作为蓝牙数据。
- * 参数说明：dat —— 收到的原始字节，来源：串口接收中断。
- * 返回参数：无。
- * 使用示例：
- *     // 由 NEUQ 库串口接收中断自动调用
- *     // 当前配置 CAR_UART_INDEX == 3，本回调只执行 (void)dat;
- * 备注信息：非蓝牙配置下显式丢弃，避免误入协议解析。
- */
 void TS_UART_1_RX_CALLBACK(uint8_t dat)
 {
-#if CAR_UART_INDEX == 1
-    Car_UART_RX_Handler(dat);    /* 转交蓝牙接收 */
-#else
-    (void)dat;                   /* 未使用，显式丢弃 */
-#endif
+    (void)dat;
 }
 
-/*
- * 函数名称：TS_UART_2_RX_CALLBACK
- * 函数功能：串口 2（USART3）接收回调，固定转交视觉处理。
- * 参数说明：dat —— 收到的原始字节，来源：串口接收中断。
- * 返回参数：无。
- * 使用示例：
- *     // 由 NEUQ 库串口接收中断自动调用
- *     Car_Vision_UART_RX_Handler(dat);
- * 备注信息：本板视觉串口固定为 USART3，因此不需要编译期条件判断。
- */
 void TS_UART_2_RX_CALLBACK(uint8_t dat)
 {
-    Car_Vision_UART_RX_Handler(dat);    /* 转交视觉接收 */
+#if CAR_VISION_ENABLE
+    Car_Vision_UART_RX_Handler(dat);
+#else
+    (void)dat;
+#endif
 }
 
-/*
- * 函数名称：TS_UART_3_RX_CALLBACK
- * 函数功能：串口 3（UART4）接收回调；仅当 CAR_UART_INDEX == 3 时
- *           才作为蓝牙数据。
- * 参数说明：dat —— 收到的原始字节，来源：串口接收中断。
- * 返回参数：无。
- * 使用示例：
- *     // 由 NEUQ 库串口接收中断自动调用
- *     // 当前配置 CAR_UART_INDEX == 3，会执行 Car_UART_RX_Handler(dat);
- * 备注信息：本板蓝牙默认使用 UART4，即 NEUQ 库索引 3。
- */
 void TS_UART_3_RX_CALLBACK(uint8_t dat)
 {
-#if CAR_UART_INDEX == 3
-    Car_UART_RX_Handler(dat);    /* 转交蓝牙接收 */
-#else
-    (void)dat;                   /* 未使用，显式丢弃 */
-#endif
+    (void)dat;
 }
 
 /* ========================================================================== */

@@ -8,7 +8,7 @@
 
 - 新增 TASK_SELECT=4，保留原第三题模式，可切回 3。
 - 按两张校赛参考原理图采用左轮通道1 PC6/TIM8 PWM、PC7 DIR、PB6/PB7 TIM4 编码器；右轮通道2 PA2/TIM2 PWM、PA5 DIR、PA6/PA7 TIM3 编码器。使用 TIM8 避免 TIM3 资源冲突。左右轮位置与正方向仍需架空确认。
-- JDY-31 走 UART4（库 UART_3）PC10 TX/PC11 RX，默认 9600；100ms 回传。沿用电机 11线、4倍频、10减速比假设，需实测核对。
+- JDY-31 走 USART1（库 UART_0）PA9 TX/PA10 RX，默认 9600；100ms 回传。沿用电机 11线、4倍频、10减速比假设，需实测核对。
 - 5ms 双速度环，目标上限180rpm、PWM35%、目标斜坡200rpm/s。停止/故障输出零；换向先输出零一个周期。
 - 新协议 C3 3C CMD LEN DATA CRC8；CRC8 polynomial 0x07 initial0，覆盖 CMD/LEN/DATA。ARM、STOP、双轮速度、单轮PID、心跳。仅合法心跳/速度指令续租，500ms 超时锁定故障；STOP清故障，重新ARM从零启动。残帧100ms超时；缓冲溢出停车。
 - 上位机使用 Python tkinter + pyserial：方向按钮、按住键盘驾驶、松键/失焦停车、停止后调参、CSV日志。关闭窗口发送STOP。断链后不会自动恢复运动。

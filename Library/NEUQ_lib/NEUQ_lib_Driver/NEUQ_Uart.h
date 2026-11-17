@@ -53,6 +53,7 @@ typedef enum{       //波特率设置
 }UART_BAUD_ENUM;
 
 void NEUQ_Uart_init(UART_DEV_ENUM DEV_select,UART_BAUD_ENUM BAUD_select);
+void NEUQ_Uart_Enable_RX_Interrupt(UART_DEV_ENUM dev, uint8_t priority);
 void NEUQ_Uart_write_byte(UART_DEV_ENUM DEV_select,uint8_t byte);
 void NEUQ_Uart_write_string(UART_DEV_ENUM DEV_select,uint8_t *str);
 void NEUQ_Uart_write_data(UART_DEV_ENUM DEV_select,uint8_t *pdata,uint32_t len);

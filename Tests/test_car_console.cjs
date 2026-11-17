@@ -49,6 +49,17 @@ test('wire commands match firmware golden vectors', () => {
   assert.equal(h.run('hex(frame(CMD_STOP))'), 'C3 3C 02 00 2A');
   assert.equal(h.run('hex(wheelsFrame(80,-80)).slice(12,23)'), '00 50 FF B0');
   assert.equal(h.run("crc8(new TextEncoder().encode('123456789'))".replace("new TextEncoder().encode('123456789')", '[49,50,51,52,53,54,55,56,57]')), 244);
+  assert.equal(h.run('clampRpm(900)'), 750);
+  assert.equal(h.run('hex(wheelsFrame(750,-750)).slice(12,23)'), '02 EE FD 12');
+});
+
+test('left Kd telemetry is never interpreted as a direction scan result', () => {
+  const h = harness();
+  for (const kd of [99, 200]) {
+    h.run(`onSample([0,0,0,0,0,0,0,0,0,1,2,0.12,${kd},2,0.12,0],0)`);
+    assert.ok(h.nodes.get('actualPid').textContent.includes(kd.toFixed(2)));
+    assert.equal(h.run("logEl.children.some(node => /方向引脚/.test(node.textContent))"), false);
+  }
 });
 
 test('STOP during outstanding ARM cannot restore pending or armed state', async () => {
@@ -124,6 +135,16 @@ test('fragmented and concatenated telemetry retains every complete sample', () =
   h.run(`const raw = new Uint8Array(68); raw.set([0,0,128,127],64);
     feed(new Uint8Array([1,2,3])); feed(raw.slice(0,35)); feed(raw.slice(35)); feed(raw);`);
   assert.equal(h.run('app.rows.length'), 2);
+});
+
+test('out-of-range PWM is rejected while high measured speed remains visible', () => {
+  const h = harness();
+  h.run(`app.lastSample = null; const raw = new Uint8Array(64); const dv = new DataView(raw.buffer);
+    dv.setFloat32(12,-974,true); dv.setFloat32(24,76,true); parseSample(raw);`);
+  assert.equal(h.run('app.lastSample'), null);
+  h.run('dv.setFloat32(24,-75,true); parseSample(raw);');
+  assert.equal(h.run('app.lastSample[3]'), -974);
+  assert.equal(h.run('app.lastSample[6]'), -75);
 });
 
 test('physical WASD works when input method changes event.key', () => {
