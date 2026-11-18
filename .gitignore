@@ -34,6 +34,9 @@ MDK-ARM/Listings/
 JLinkLog.txt
 JLinkSettings.ini
 
+# Keil 命令行构建/烧录日志（UV4 -o 输出，仅本地诊断用）
+MDK-ARM/uv4_*.log
+
 # 自动生成的 RTE 头文件（Keil 在 RTE/_<target>/，EIDE 在 MDK-ARM/ 根目录）
 MDK-ARM/RTE/_*/
 MDK-ARM/RTE_Components.h

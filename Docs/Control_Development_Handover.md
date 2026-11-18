@@ -141,9 +141,10 @@ flowchart TD
 | 参数 | 当前值 | 修改处/含义 |
 |---|---|---|
 | 编码器 | 11 PPR × 4 × 减速比 10 = 440 counts/rev | `CAR_ENCODER_CPR`，输出轴每转计数 |
-| 电机空载转速记录 | 1000 rpm | `CAR_MOTOR_NOLOAD_RPM`，信息记录，不是当前指令上限 |
-| 目标转速上限 | ±180 rpm | `CAR_RPM_LIMIT` |
-| PWM 上限 | ±3500，满量程 10000 | `CAR_PWM_LIMIT`，即 ±35% |
+| 电机空载转速记录 | 1000 rpm | `CAR_MOTOR_NOLOAD_RPM`，转速满量程 |
+| 目标转速上限 | ±900 rpm（满量程的 90%） | `CAR_RPM_LIMIT` = `CAR_RPM_MAX × CAR_LIMIT_FRACTION` |
+| PWM 上限 | ±9000，满量程 10000（90%） | `CAR_PWM_LIMIT` = `CAR_PWM_MAX × CAR_LIMIT_FRACTION` |
+| 超速报错 | 实测 >900 rpm 持续 100 ms | `CAR_OVERSPEED_RPM`，故障码 8 |
 | 参考加速度/加加速度 | 200 rpm/s；800 rpm/s² | `Car_Config.h`；自主流式参考只有加速度限幅，不能声称同时保证 jerk |
 | 测速窗口 | 8 个控制周期（40 ms）计数滑动平均 | `CAR_SPEED_WINDOW_TICKS`；单计数约 3.4 rpm |
 | 速度反馈低通 | 0.015 s | `CAR_SPEED_FILTER_TAU_S`；叠加在窗口之后 |
@@ -221,7 +222,7 @@ D 项   = -Kd × 0.005 × d(measure)/dt
 
 正常巡线当前直接用视觉曲率；收到的 lateral/heading 没有作为独立外环误差使用。环岛/十字主要依靠视觉端选线与任务降速，未实现完整路径图导航。绿色通过；蓝锥桶依赖边界和净空，没有独立锥桶定位控制器。
 
-断路仍需要持续收到新鲜视觉消息：可发送“在线但无道路”的观测，不能停止发送。通信断流超过有效期时，即使处于断路也会停车。`VISION_ELEMENT_FINISH` 只是协议枚举，当前终点实际由累计里程触发。
+普通巡线遇到单帧无曲率或 UART 断流时不再直接停车：沿用最近有效曲率、降速到 0.18 m/s，并在 LCD 显示 `VISION LOST`；`RACE_VISION_LOST_STOP_MS` 默认 0，设为非零毫秒数可恢复有界失效停车。断路仍需要持续收到新鲜视觉消息：可发送“在线但无道路”的观测；接回白路须连续三帧确认，超过 1.95 m 或 12.5 s 未接回仍会停车。`VISION_ELEMENT_FINISH` 只是协议枚举，当前终点实际由累计里程触发。
 
 终点收尾由 `finish_tick()` 与 `poll_menu()` 协作：
 
@@ -282,8 +283,11 @@ CRC8: polynomial 0x07, init 0, 覆盖 CMD 到 DATA
 | 3 WHEELS | 左右各一个大端 int16，单位 rpm | 更新双轮目标并刷新通信计时 |
 | 4 PID | 轮号 u8 + 大端 uint16 Kp/Ki/Kd，增益×100 | STOP 下应用到 RAM |
 | 5 HEARTBEAT | 无 | 手动 RUN 续租，不改变目标 |
+| 6 OPENLOOP | 轮号 u8 + 大端 int16 PWM | 内环自动调参开环测试；仅 RUN，±3000，500 ms 内刷新 |
 
 半帧字节间隔 100 ms 超时；PID 帧不能给运行看门狗续租。`result` 为 0 成功、1 状态不允许、2 参数无效、3 帧/命令无效。修改线协议必须同步 `Tools/car_host.py`、网页调试台和协议测试。
+
+命令 6 进入开环后绕过内外环直接给 PWM，但保留超速、堵转和方向保护；STOP、故障、轮速命令或 500 ms 未刷新都会撤去输出。它只用于车轮架空时的内环 PRC 采集，外环位置环仍不可调；原理和安全边界见[内环自动调参](Auto_Tuning.md)。
 
 遥测为 JustFloat：16 个小端 float32 加帧尾 `00 00 80 7F`，标称每 100 ms 一帧。序号不是蓝牙请求应答；“已发送”不等于下位机已应用。
 

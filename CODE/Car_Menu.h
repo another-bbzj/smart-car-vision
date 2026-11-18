@@ -19,10 +19,12 @@ typedef struct {
 typedef struct {
     CarMenu menu;
     StartCondition start;
-    uint8_t state, fault, autonomous, lap, phase, fresh;
+    uint8_t state, fault, autonomous, lap, phase, fresh, degraded;
     uint8_t imu_present, gyro_ok, samples;
     uint8_t tile_mask;
     uint8_t params_dirty, params_saved;
+    /* 视觉接收统计：联调时区分"没收到帧"和"收到但校验/业务被拒"。 */
+    uint32_t vision_ok, vision_bad, vision_rejected;
     float distance, yaw_deg, gyro_dps, bias_dps;
     float speed[2], reference[2], pwm[2], gains[3];
     CarVisionObservation obs;

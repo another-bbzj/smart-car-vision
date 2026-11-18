@@ -109,9 +109,10 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
         snprintf(s,sizeof s,"%s", v->state != CAR_STOP ? "PE10: STOP / clear fault" :
                  (m->depth < 2 ? "UP/DN move  OK enter  BACK exit" : "PE9: Back"));
     } else if (row == 8) {
-        style = v->state == CAR_FAULT ? UI_STYLE_WARN : UI_STYLE_HINT;
-        snprintf(s,sizeof s,"%s  Fault %u",v->state == CAR_STOP ? "STOP" :
-                 (v->state == CAR_FAULT ? "FAULT" : (v->autonomous ? "RACE" : "MANUAL")), (unsigned)v->fault);
+        style = (v->state == CAR_FAULT || v->degraded) ? UI_STYLE_WARN : UI_STYLE_HINT;
+        snprintf(s,sizeof s,"%s%s  Fault %u",v->state == CAR_STOP ? "STOP" :
+                 (v->state == CAR_FAULT ? "FAULT" : (v->autonomous ? "RACE" : "MANUAL")),
+                 v->degraded ? " VISION LOST" : "", (unsigned)v->fault);
     } else if (m->depth < 2) {
         unsigned n = row-1;
         if (n < (m->depth ? (group >= MENU_LEFT_PID ? 4U : 3U) : (unsigned)MENU_GROUPS)) {
@@ -132,6 +133,10 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
         if (row == 4) snprintf(s,sizeof s,"Race yaw %.1f deg",v->yaw_deg);
         if (row == 5) snprintf(s,sizeof s,"Tiles %u/4",
             (unsigned)((v->tile_mask&1)+((v->tile_mask>>1)&1)+((v->tile_mask>>2)&1)+((v->tile_mask>>3)&1)));
+        if (row == 6 && v->degraded) {
+            style = UI_STYLE_WARN;
+            snprintf(s,sizeof s,"Vision lost: last curve");
+        }
     } else if (group == MENU_RACE) {
         if (row == 2 && result != SUDOKU_SOLVED) {
             const char *status = "Collecting: solve after finish";
@@ -202,6 +207,13 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
         if (row == 4 && (v->obs.valid_mask & VISION_CURVATURE_VALID))
             snprintf(s,sizeof s,"Curvature %+.2f /m",v->obs.curvature_inv_m);
         if (row == 5) snprintf(s,sizeof s,"Element %u",(unsigned)v->obs.element);
+    }
+    /* 接收统计与是否新鲜无关：bad 表示 CRC/长度错，rejected 表示 CRC 对但
+     * 会话、序号、年龄或字段越界被业务层拒绝。两者持续增长说明协议不匹配。 */
+    if ((group == MENU_SENSORS && item == 2) && m->depth >= 2) {
+        if (row == 6) snprintf(s,sizeof s,"OK %lu  bad %lu",
+            (unsigned long)v->vision_ok,(unsigned long)v->vision_bad);
+        if (row == 7) snprintf(s,sizeof s,"Rejected %lu",(unsigned long)v->vision_rejected);
     }
     My_Lcd_print((uint8_t)row,style,"%s",s);
 }

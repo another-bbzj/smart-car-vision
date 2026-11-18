@@ -68,6 +68,15 @@ int main(void) {
     o.valid_mask=VISION_CURVATURE_VALID; o.curvature_inv_m=3; o.confidence=1;
     cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,0);
     assert(cmd.rpm[1]>cmd.rpm[0] && cmd.rpm[0]>0);
+    /* A curvature spike beyond the chassis turning limit must not command the
+     * inner wheel to reverse while the car is moving forward: it may stop, but
+     * its target stays on the commanded side instead of being lost. */
+    o.curvature_inv_m=15;
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,0);
+    assert(cmd.rpm[0]>=0 && cmd.rpm[1]>0);
+    o.curvature_inv_m=-15;
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,0);
+    assert(cmd.rpm[0]>0 && cmd.rpm[1]>=0);
     Car_Init(&car);
     assert(Car_StartRace(&car));
     Car_RaceWheels(&car,cmd.rpm);
@@ -75,9 +84,27 @@ int main(void) {
     assert(car.reference[0]>0 && car.reference[1]>car.reference[0]);
     Car_LocalStop(&car);
     assert(car.state==CAR_STOP && !car.autonomous && !car.output[1]);
+    /* A missing/stale link must hold the last curvature and keep driving. */
     cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,5);
-    assert(r.phase==RACE_FAULT && cmd.rpm[0]==0);
+    assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[0]>0 && cmd.rpm[1]>=0);
+    /* Even a prolonged outage must not fault the race; only the warning stays. */
+    for (unsigned i=0;i<400;++i) {
+        cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,20U+i*5U);
+        assert(r.phase==RACE_TRACK && r.degraded);
+    }
+    /* A fresh frame that found no road is the same hold, not a fault. */
+    o.valid_mask=0;
+    ++o.sequence;
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,2500);
+    assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[0]>0);
+    /* The next valid curvature frame clears the warning. */
+    o.valid_mask=VISION_CURVATURE_VALID;
+    o.curvature_inv_m=0;
+    o.confidence=1;
+    ++o.sequence;
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,2505);
+    assert(r.phase==RACE_TRACK && !r.degraded && cmd.rpm[0]>0);
     two_laps();
-    puts("PASS race authority, geometry, fresh link, two laps, 1.60 m gaps, bypass clearance, red dwell, finish and Sudoku");
+    puts("PASS race authority, geometry, vision hold, two laps, 1.60 m gaps, bypass clearance, red dwell, finish and Sudoku");
     return 0;
 }

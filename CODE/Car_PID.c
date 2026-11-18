@@ -181,7 +181,7 @@ void Car_Pid_reset(Car_Pid_Struct *p)
  * 返回参数：1 成功；0 参数无效，此时对象已清空并置 fault = 1。
  * 使用示例：
  *     Car_Pid_Struct pid;
- *     if (!Car_Pid_init(&pid, 2.0f, 0.12f, 0.0f, 3500.0f))
+ *     if (!Car_Pid_init(&pid, 2.0f, 0.12f, 0.0f, 9000.0f))
  *     {
  *         // 参数非法，pid.fault 已置 1
  *     }
@@ -456,7 +456,7 @@ void Car_PidInc_reset(Car_PidInc_Struct *p)
  * 返回参数：1 成功；0 参数无效，此时对象已清空并置 fault = 1。
  * 使用示例：
  *     Car_PidInc_Struct pid_inc;
- *     if (!Car_PidInc_init(&pid_inc, 2.0f, 0.12f, 0.0f, 3500.0f))
+ *     if (!Car_PidInc_init(&pid_inc, 2.0f, 0.12f, 0.0f, 9000.0f))
  *     {
  *         // 参数非法，pid_inc.fault 已置 1
  *     }

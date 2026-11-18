@@ -15,13 +15,20 @@ class ProtocolTests(unittest.TestCase):
 
     def test_signed_and_range(self):
         self.assertEqual(host.wheels(80, -80)[4:8], struct.pack('>hh', 80, -80))
-        self.assertEqual(host.wheels(750, -750)[4:8], struct.pack('>hh', 750, -750))
-        with self.assertRaises(ValueError): host.wheels(751, 0)
+        self.assertEqual(host.wheels(900, -900)[4:8], struct.pack('>hh', 900, -900))
+        with self.assertRaises(ValueError): host.wheels(901, 0)
 
     def test_pid_validation(self):
         self.assertEqual(host.pid_packet(1, '2', '.12', '0')[4:-1], bytes.fromhex('01 00 c8 00 0c 00 00'))
         for value in ['nan', 'inf', '-1', '0.001', '656']:
             with self.assertRaises(ValueError): host.pid_packet(0, value, '0', '0')
+
+    def test_openloop_validation(self):
+        self.assertEqual(host.openloop_packet(0, 1500)[2:], bytes.fromhex('06 03 00 05 dc 2a'))
+        self.assertEqual(host.openloop_packet(1, -1500)[4:-1], bytes.fromhex('01 fa 24'))
+        for pwm in (3001, -3001):
+            with self.assertRaises(ValueError): host.openloop_packet(0, pwm)
+        with self.assertRaises(ValueError): host.openloop_packet(2, 0)
 
     def test_differential_mix(self):
         self.assertEqual(host.mix(1, 0, 80), (80, 80))

@@ -13,15 +13,28 @@
 #define RACE_BYPASS_OFFSET_M 0.18f
 #define RACE_GYRO_SIGN       1.0f   /* chassis CCW is positive */
 
+/*
+ * Vision-loss policy: a fresh frame without valid curvature, or no fresh frame
+ * at all, no longer faults the race. The car keeps the last accepted curvature,
+ * drives at the reduced speed below and raises only a warning on the LCD.
+ * RACE_VISION_LOST_STOP_MS can restore a hard failsafe: set it to a nonzero
+ * duration (milliseconds) to stop after that long without a valid road frame
+ * while in RACE_TRACK. The gap phase is exempt because it is blind by design.
+ */
+#define RACE_VISION_HOLD_SPEED_MPS 0.18f
+#define RACE_VISION_LOST_STOP_MS   0U
+
 typedef enum { RACE_TRACK, RACE_GAP, RACE_BYPASS, RACE_RED,
                RACE_FINISHED, RACE_FAULT } RacePhase;
 typedef struct {
     RacePhase phase;
     float distance, yaw, entry, entry_yaw, offset, obstacle_m, goal_m;
     float last_gap, last_action, straight_m;
-    uint32_t entered_ms, still_ms;
+    float last_curve;            /* last accepted curvature, 1/m */
+    uint32_t entered_ms, still_ms, last_road_ms;
     uint16_t last_sequence;
     uint8_t lap, clear_frames, held_element, have_sequence, timing_stop;
+    uint8_t degraded, have_curve;
 } CarRace;
 typedef struct { float rpm[2]; } RaceDrive;
 void Race_Start(CarRace *r);

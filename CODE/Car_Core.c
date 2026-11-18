@@ -33,6 +33,8 @@
  *       —— 求浮点数绝对值，用于速度大小判断。
  *   static float clamp(float x, float lim)
  *       —— 把浮点数限制到 [-lim, +lim]，用于目标转速限幅。
+ *   static float wheel_ff_ks(unsigned wheel)
+ *       —— 按左右轮返回各自的静摩擦前馈系数。
  *   static void speed_window_clear(Car_Core *c)
  *       —— 清空双轮测速滑动窗口，使下一次测速从空窗口开始。
  *   static void speed_window_push(Car_Core *c, unsigned i, int32_t counts,
@@ -126,6 +128,21 @@ static float clamp(float x, float lim)
 }
 
 /*
+ * 函数名称：wheel_ff_ks
+ * 函数功能：取指定车轮的静摩擦前馈系数。
+ * 参数说明：wheel —— 轮号，0 左轮、1 右轮。
+ * 返回参数：对应车轮的 Ks，单位 PWM 数值。
+ * 使用示例：
+ *     Car_PidInc_configure(&c->pid_speed[i], ..., wheel_ff_ks(i), ...);
+ * 备注信息：两轮静摩擦门槛实测不同（左轮约 12%、右轮约 7%），共用一组
+ *           Ks 会让右轮低速过冲、左轮起不来。默认值见 Car_Config.h。
+ */
+static float wheel_ff_ks(unsigned wheel)
+{
+    return wheel ? CAR_FF_KS_RIGHT : CAR_FF_KS_LEFT;
+}
+
+/*
  * 函数名称：speed_window_clear
  * 函数功能：清空双轮测速滑动窗口，使下一次测速从空窗口重新开始。
  * 参数说明：c —— 控制对象。
@@ -145,6 +162,10 @@ static void speed_window_clear(Car_Core *c)
         c->speed_fill[i] = 0;                        /* 有效拍数清零 */
         memset(c->speed_counts[i], 0, sizeof(c->speed_counts[i]));
         memset(c->speed_dt_us[i], 0, sizeof(c->speed_dt_us[i]));
+        /* 窗口重开后，守卫也从空窗口重新播种；诊断计数保留累计值。 */
+        c->speed_guard_raw[i] = 0.0f;
+        c->speed_guard_hold[i] = 0;
+        c->count_guard_hold[i] = 0;
     }
 }
 
@@ -216,6 +237,26 @@ static float speed_window_rpm(const Car_Core *c, unsigned i)
 }
 
 /*
+ * 函数名称：open_loop_clear
+ * 函数功能：退出双轮开环 PWM 测试并清除命令和超时计数。
+ * 参数说明：c —— 控制对象。
+ * 返回参数：无。
+ * 备注信息：STOP、故障、ARM、轮速命令和恢复闭环时都必须调用，
+ *           保证不会把上一次测试的占空比留在执行器上。
+ */
+static void open_loop_clear(Car_Core *c)
+{
+    unsigned i;
+
+    for (i = 0; i < 2; i++)
+    {
+        c->open_loop[i] = 0U;
+        c->open_loop_pwm[i] = 0.0f;
+        c->open_loop_us[i] = 0U;
+    }
+}
+
+/*
  * 函数名称：reset_motion
  * 函数功能：停止运动并清除规划器、PID、测速窗口和保护计时。
  * 参数说明：c —— 控制对象。
@@ -232,6 +273,7 @@ static void reset_motion(Car_Core *c)
 
     CarReference_Reset(&c->profile);
     speed_window_clear(c);                           /* 双轮窗口同步清空 */
+    open_loop_clear(c);                              /* 退出开环测试 */
 
     for (i = 0; i < 2; i++)
     {
@@ -240,6 +282,7 @@ static void reset_motion(Car_Core *c)
         c->position[i] = 0.0f;                       /* 累计位置回到零点 */
         c->position_target[i] = 0.0f;                /* 外环目标位置回到零点 */
         c->output[i] = 0.0f;                         /* 控制输出清零 */
+        c->output_last[i] = 0.0f;                    /* 守卫保持值同步清零 */
         c->stall_us[i] = 0;                          /* 堵转计时清零 */
         c->overspeed_us[i] = 0;
         c->direction_us[i] = 0;                      /* 方向异常计时清零 */
@@ -293,7 +336,7 @@ void Car_Init(Car_Core *c)
                                   CAR_PID_SETPOINT_WEIGHT,
                                   CAR_PID_D_TAU_S,
                                   1.0f,
-                                  CAR_FF_KS,
+                                  wheel_ff_ks(i),
                                   CAR_FF_KV,
                                   CAR_FF_KA))
         {
@@ -371,8 +414,55 @@ uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
     if (c->state != CAR_STOP) return 1;
     if (wheel > 1 || !Car_PidInc_init(&next, kp, ki, kd, CAR_PWM_LIMIT) ||
         !Car_PidInc_configure(&next, CAR_PID_SETPOINT_WEIGHT, CAR_PID_D_TAU_S,
-                              1.0f, CAR_FF_KS, CAR_FF_KV, CAR_FF_KA)) return 2;
+                              1.0f, wheel_ff_ks(wheel), CAR_FF_KV, CAR_FF_KA))
+    {
+        return 2;
+    }
     c->pid_speed[wheel] = next;      /* 蓝牙命令 4 只写内环速度环 */
+    return 0;
+}
+
+uint8_t Car_SetOpenLoop(Car_Core *c, unsigned wheel, float pwm)
+{
+    uint8_t entering;
+
+    if (c->state != CAR_RUN) return 1;
+    if (wheel > 1 || pwm != pwm ||
+        pwm < -CAR_OPENLOOP_PWM_LIMIT || pwm > CAR_OPENLOOP_PWM_LIMIT)
+    {
+        return 2;
+    }
+
+    /*
+     * 首次进入开环时要求双轮目标为零且车轮基本停住，防止在正常行驶中
+     * 直接切到开环。周期刷新时 open_loop 已置位，不再做这项检查，
+     * 否则阶跃期间转速上升会让后续刷新被拒绝。
+     */
+    entering = (c->open_loop[0] == 0U && c->open_loop[1] == 0U) ? 1U : 0U;
+    if (entering &&
+        (c->target[0] != 0.0f || c->target[1] != 0.0f ||
+         absolute(c->speed[0]) > 10.0f || absolute(c->speed[1]) > 10.0f))
+    {
+        return 2;
+    }
+
+    /*
+     * 一次只测试一轮：先清掉双轮开环和规划器，避免另一轮带着旧目标运动。
+     * target/reference 归零后，本拍不会再走正常 PID 分支。
+     */
+    open_loop_clear(c);
+    CarReference_Reset(&c->profile);
+    c->target[0] = 0.0f;
+    c->target[1] = 0.0f;
+    c->reference[0] = 0.0f;
+    c->reference[1] = 0.0f;
+
+    c->open_loop[wheel] = 1U;
+    c->open_loop_pwm[wheel] = pwm;
+    c->open_loop_us[wheel] = 0U;
+    Car_PidInc_reset(&c->pid_speed[wheel]);
+    Car_Pid_reset(&c->pid_position[wheel]);
+    c->link_us = 0U;                 /* 开环命令同样刷新通信看门狗 */
     return 0;
 }
 
@@ -501,13 +591,15 @@ static void execute(Car_Core *c)
             break;
 
         case 3:
-            /* WHEELS：左、右目标转速；双轮都为零时立即复位运动状态。 */
+            /* WHEELS：左、右目标转速；双轮都为零时立即复位运动状态。
+             * 合法的轮速命令同时退出开环测试，恢复内环闭环控制。 */
             if (c->state != CAR_RUN)
             {
                 c->result = 1;            /* 非运行状态拒绝转速命令 */
                 break;
             }
 
+            open_loop_clear(c);
             c->target[0] = clamp(signed_rpm(c->data), CAR_RPM_LIMIT);
             c->target[1] = clamp(signed_rpm(c->data + 2), CAR_RPM_LIMIT);
 
@@ -532,6 +624,12 @@ static void execute(Car_Core *c)
             {
                 c->link_us = 0;           /* 运行中喂看门狗 */
             }
+            break;
+
+        case 6:
+            /* OPENLOOP：自动调参用的开环 PWM 测试，轮号 + 大端 int16。 */
+            c->result = Car_SetOpenLoop(c, c->data[0],
+                                        signed_rpm(c->data + 1));
             break;
 
         default:
@@ -560,18 +658,19 @@ static void execute(Car_Core *c)
 void Car_FeedByte(Car_Core *c, uint8_t byte)
 {
     /*
-     * 命令 1~5 对应的负载长度：0、0、4、7、0。
+     * 命令 1~6 对应的负载长度：0、0、4、7、0、3。
      * 下标 0 占位，保证可以直接用命令号索引；先核验长度，
      * 才能保证后续写入 c->data[7] 不会越界。
      */
-    static const uint8_t lengths[6] =
+    static const uint8_t lengths[7] =
     {
         255,                                         /* 下标 0：无效命令占位 */
         0,                                           /* 命令 1：ARM，无负载 */
         0,                                           /* 命令 2：STOP，无负载 */
         4,                                           /* 命令 3：WHEELS，左右各 2 字节 */
         7,                                           /* 命令 4：PID，轮号 + 3 个 uint16 */
-        0                                            /* 命令 5：HEARTBEAT，无负载 */
+        0,                                           /* 命令 5：HEARTBEAT，无负载 */
+        3                                            /* 命令 6：OPENLOOP，轮号 + int16 */
     };
 
     /*
@@ -609,7 +708,7 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
 
         case 2:
             /* 状态 2：接收命令号，并开始累计 CRC。 */
-            if (byte < 1 || byte > 5)
+            if (byte < 1 || byte > 6)
             {
                 c->result = 3;
                 c->parse_state = (byte == 0xC3) ? 1 : 0;
@@ -749,9 +848,90 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
          */
         float raw;                                /* 窗口平均转速，rpm */
         float abs_speed;                          /* 实测转速绝对值，rpm */
+#if CAR_SPEED_GUARD_ENABLE
+        uint8_t guarded = 0U;                     /* 本拍测速是否被判为野值 */
+#endif
+
+#if CAR_SPEED_GUARD_ENABLE
+        /*
+         * 单拍计数物理上限：转速上限 × CPR × dt，再乘裕量。超过后用上一拍
+         * 滤波转速推算的计数替换，避免野值进入窗口。窗口未填满时还没有
+         * 可信的转速基准，先放行，让滤波器建立初值；STOP 状态不拦截，
+         * 保证停车后的位置和速度仍按真实计数累计。
+         */
+        if (c->state == CAR_RUN&&!c->open_loop[i]&&
+            c->speed_fill[i] >= CAR_SPEED_WINDOW_TICKS)
+        {
+            float dt_s = (float)dt_us * 0.000001f;
+            float max_counts = CAR_ENCODER_CPR * CAR_RPM_MAX / 60.0f *
+                               dt_s * CAR_COUNT_GUARD_FACTOR;
+
+            if (absolute((float)counts[i]) > max_counts)
+            {
+                /*
+                 * 连续超限达到保持拍数后放行，交给超速/堵转保护判断，
+                 * 避免把真实的持续超速永久挡在窗口外；计数回到限内后
+                 * 重新开始计数。
+                 */
+                if (c->count_guard_hold[i] <
+                    CAR_SPEED_GUARD_HOLD_TICKS)
+                {
+                    c->count_guard_hold[i]++;
+                    counts[i] = (int32_t)(c->speed[i] * CAR_ENCODER_CPR /
+                                          60.0f * dt_s);
+                    c->count_reject[i]++;
+                    guarded = 1U;
+                }
+            }
+            else
+            {
+                c->count_guard_hold[i] = 0;
+            }
+        }
+#endif
 
         speed_window_push(c, i, counts[i], dt_us);
         raw = speed_window_rpm(c, i);
+
+#if CAR_SPEED_GUARD_ENABLE
+        /*
+         * 窗口转速跳变守卫：正常参考加速度 200 rpm/s，5 ms 只变化 1 rpm；
+         * 单拍 50 rpm 以上的跳变只可能来自坏计数或真实冲击。短于
+         * CAR_SPEED_GUARD_HOLD_TICKS 的跳变保持上一次有效值；持续超过该
+         * 拍数的变化视为真实变化并接受，避免把真实加减速永久挡住。
+         */
+        if (c->state == CAR_RUN &&!c->open_loop[i]&&
+            c->speed_fill[i] >= CAR_SPEED_WINDOW_TICKS)
+        {
+            if (absolute(raw - c->speed_guard_raw[i]) >
+                CAR_SPEED_GUARD_STEP_RPM)
+            {
+                /*
+                 * 连续跳变达到保持拍数后接受新电平，避免真实加减速被
+                 * 永久挡住；回到 50 rpm 以内后重新开始计数。
+                 */
+                if (c->speed_guard_hold[i] <
+                    CAR_SPEED_GUARD_HOLD_TICKS)
+                {
+                    c->speed_guard_hold[i]++;
+                    raw = c->speed_guard_raw[i];
+                    c->speed_reject[i]++;
+                    guarded = 1U;
+                }
+            }
+            else
+            {
+                c->speed_guard_hold[i] = 0;
+            }
+            c->speed_guard_raw[i] = raw;
+        }
+        else
+        {
+            /* STOP 或窗口未满：守卫跟随真实值，不拦截。 */
+            c->speed_guard_raw[i] = raw;
+            c->speed_guard_hold[i] = 0;
+        }
+#endif
 
         /*
          * 一阶低通滤波：残量化噪声由窗口压制，这里只做最后的平滑。
@@ -766,68 +946,113 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
         if (c->state != CAR_RUN)
         {
             c->output[i] = 0.0f;                  /* 非运行状态撤去输出 */
+            c->output_last[i] = 0.0f;             /* 守卫保持值同步清零 */
             continue;
         }
 
         c->reference[i] = c->profile.value[i];    /* 本拍规划器参考转速 */
 
         /*
-         * 外环位置式位置环。默认由 CAR_CASCADE_OUTER_ENABLE = 0 关闭：
-         * 此时位置环不参与控制，内环直接跟随规划器参考转速。
-         * 启用后位置误差换算为内环转速给定，并受 CAR_RPM_LIMIT 限幅。
+         * 开环 PWM 测试（蓝牙命令 6）：直接给执行器，绕过外环/内环。
+         * 上位机必须周期刷新命令；超时后该轮立即撤去输出。开环期间
+         * target/reference 已被清零，下面的超速、堵转和方向保护仍生效。
          */
-#if CAR_CASCADE_OUTER_ENABLE
-        c->reference[i] = Car_Pid_update_dt(&c->pid_position[i],
-                                            c->position_target[i],
-                                            c->position[i],
-                                            0.0f,
-                                            dt);
-#endif
-
-        /*
-         * 单轮目标和参考均归零后撤去驱动、清除积分；
-         * 不以 PID 主动“抱住”零速。此处清零的是控制输出，
-         * 车轮是否已经停住仍以 speed 反馈判断。
-         */
-        if (c->reference[i] == 0.0f && c->target[i] == 0.0f)
+        if (c->open_loop[i])
         {
-            c->output[i] = 0.0f;
-            Car_PidInc_reset(&c->pid_speed[i]);
-            Car_Pid_reset(&c->pid_position[i]);
+            c->open_loop_us[i] += dt_us;
+
+            if (c->open_loop_us[i] >= CAR_OPENLOOP_TIMEOUT_MS * 1000U)
+            {
+                c->open_loop[i] = 0U;
+                c->open_loop_pwm[i] = 0.0f;
+                c->output[i] = 0.0f;
+                c->output_last[i] = 0.0f;
+                Car_PidInc_reset(&c->pid_speed[i]);
+                Car_Pid_reset(&c->pid_position[i]);
+            }
+            else
+            {
+                Car_PidInc_reset(&c->pid_speed[i]);
+                Car_Pid_reset(&c->pid_position[i]);
+                c->output[i] = c->open_loop_pwm[i];
+                c->output_last[i] = c->output[i];
+            }
         }
         else
         {
             /*
-             * 内环增量式速度 PID。外环关闭时用规划器加速度做 Ka 前馈；
-             * 外环启用时内环给定来自位置环，规划器加速度不再对应它，
-             * 因此按 0 处理。
+             * 外环位置式位置环。默认由 CAR_CASCADE_OUTER_ENABLE = 0 关闭：
+             * 此时位置环不参与控制，内环直接跟随规划器参考转速。
+             * 启用后位置误差换算为内环转速给定，并受 CAR_RPM_LIMIT 限幅。
              */
 #if CAR_CASCADE_OUTER_ENABLE
-            c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
-                                                c->reference[i],
-                                                c->speed[i],
+            c->reference[i] = Car_Pid_update_dt(&c->pid_position[i],
+                                                c->position_target[i],
+                                                c->position[i],
                                                 0.0f,
                                                 dt);
-#else
-            c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
-                                                c->reference[i],
-                                                c->speed[i],
-                                                c->profile.acceleration[i],
-                                                dt);
 #endif
+
+            /*
+             * 单轮目标和参考均归零后撤去驱动、清除积分；
+             * 不以 PID 主动“抱住”零速。此处清零的是控制输出，
+             * 车轮是否已经停住仍以 speed 反馈判断。
+             */
+            if (c->reference[i] == 0.0f && c->target[i] == 0.0f)
+            {
+                c->output[i] = 0.0f;
+                c->output_last[i] = 0.0f;
+                Car_PidInc_reset(&c->pid_speed[i]);
+                Car_Pid_reset(&c->pid_position[i]);
+            }
+            else
+            {
+                /*
+                 * 内环增量式速度 PID。外环关闭时用规划器加速度做 Ka 前馈；
+                 * 外环启用时内环给定来自位置环，规划器加速度不再对应它，
+                 * 因此按 0 处理。
+                 */
+#if CAR_CASCADE_OUTER_ENABLE
+                c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
+                                                    c->reference[i],
+                                                    c->speed[i],
+                                                    0.0f,
+                                                    dt);
+#else
+                c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
+                                                    c->reference[i],
+                                                    c->speed[i],
+                                                    c->profile.acceleration[i],
+                                                    dt);
+#endif
+            }
         }
+
+#if CAR_SPEED_GUARD_ENABLE
+        /*
+         * 本拍测速被判为野值时保持上一拍输出。PID 内部仍按保持后的测速
+         * 更新，但执行器不会因为一个坏样本在 1~2 拍内掉到零，也就不会
+         * 误触发反向或让 DIR 抖动。开环命令不经过这条保持逻辑。
+         */
+        if (guarded && !c->open_loop[i])
+        {
+            c->output[i] = c->output_last[i];
+        }
+#endif
+        c->output_last[i] = c->output[i];
 
         /* 任一环内部检测到数值异常都会锁存 fault，这里立即转入整车故障。 */
         if (c->pid_speed[i].fault || c->pid_position[i].fault)
         {
+            c->output_last[i] = 0.0f;
             Car_Fault(c, CAR_CONTROLLER_FAULT);
             continue;
         }
 
         abs_speed = absolute(c->speed[i]);        /* 取实测转速绝对值 */
 
-        /* Sustained overspeed stops both wheels. */
-        if (abs_speed > CAR_RPM_LIMIT + 120.0f)
+        /* 实测转速持续超过满量程的 90% 才停车，短暂超调由 100 ms 计时滤除。 */
+        if (abs_speed > CAR_OVERSPEED_RPM)
         {
             c->overspeed_us[i] += dt_us;
             if (c->overspeed_us[i] >= 100000U)
@@ -847,10 +1072,11 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
         /*
          * 堵转判断：
          * 参考转速和输出都比较大、实测转速却很低，且持续超过阈值时间，
-         * 才判定为堵转，避免起步瞬间或短暂过载误触发。
+         * 才判定为堵转，避免起步瞬间或短暂过载误触发。开环测试没有
+         * 参考转速，因此只要输出超过门槛就按同样的条件计时。
          */
-        if (absolute(c->reference[i]) >= 40.0f &&
-            absolute(c->output[i]) >= 1500.0f &&
+        if ((absolute(c->reference[i]) >= 40.0f || c->open_loop[i]) &&
+            absolute(c->output[i]) >= CAR_STALL_PWM &&
             abs_speed < 10.0f)
         {
             c->stall_us[i] += dt_us;
@@ -871,7 +1097,7 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
          * 并持续超过阈值时间，说明车轮可能被卡住或接线方向错误。
          * slow_speed 用于排除明显减速过程中的正常换向；条件中断即清除计时。
          */
-        if (c->reference[i] * c->speed[i] < 0.0f &&
+        if ((c->reference[i] * c->speed[i] < 0.0f || c->open_loop[i]) &&
             c->output[i] * c->speed[i] < 0.0f &&
             abs_speed > 100.0f &&
             abs_speed >= c->slow_speed[i] - 5.0f)

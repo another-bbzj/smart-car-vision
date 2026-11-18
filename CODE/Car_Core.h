@@ -60,7 +60,11 @@ enum
  *     3 WHEELS  ：双轮目标转速，两个大端 int16；
  *     4 PID     ：设置内环速度 PID，轮号 0/1 + 三个大端 uint16（Kp/Ki/Kd，放大 100 倍）；
  *                 外环位置环暂不开放蓝牙调参；
- *     5 HEARTBEAT：心跳，无负载。
+ *     5 HEARTBEAT：心跳，无负载；
+ *     6 OPENLOOP：开环 PWM 测试，轮号 0/1 + 一个大端 int16 PWM；
+ *                 仅 RUN 接受，绝对值不超过 CAR_OPENLOOP_PWM_LIMIT，
+ *                 必须每 CAR_OPENLOOP_TIMEOUT_MS 内刷新；STOP、故障、
+ *                 轮速命令或超时都会撤去开环输出。
  *
  *   result：0 成功，1 状态不允许，2 参数无效，3 帧或命令无效。
  */
@@ -81,6 +85,16 @@ typedef struct
     float reference[2];      /* 内环转速给定，单位 rpm：外环关闭时等于规划器输出 */
     float speed[2];          /* 滤波后的实测转速，单位 rpm，下标 0 左、1 右 */
     float output[2];         /* 带符号 PWM 输出，正负号表示方向，下标 0 左、1 右 */
+
+    /*
+     * 开环 PWM 测试（自动调参 PRC 采集）。open_loop[i] 为 1 时该轮绕过
+     * 内环/外环，output 直接等于 open_loop_pwm[i]；open_loop_us 记录距
+     * 最近一次命令的时间，超过 CAR_OPENLOOP_TIMEOUT_MS 自动清零。
+     * 开环只允许 RUN 状态，STOP、故障和轮速命令都会清除该状态。
+     */
+    uint8_t open_loop[2];      /* 1 表示该轮处于开环 PWM 测试 */
+    float open_loop_pwm[2];    /* 最近一次开环 PWM 命令，带符号 */
+    uint32_t open_loop_us[2];  /* 距最近一次开环命令的时间，微秒 */
 
     /*
      * 测速滑动窗口。每个控制周期把本拍编码器增量和对应时间压入环形缓冲，
@@ -105,6 +119,19 @@ typedef struct
 
     /* 转速绝对值的慢速滤波结果，用于识别换向时是否仍在减速。 */
     float slow_speed[2];
+
+    /*
+     * 测速合理性守卫。speed_guard_raw 保存上一次接受的窗口转速；
+     * speed_guard_hold 记录连续超限拍数；output_last 保存上一拍实际输出，
+     * 本拍测速被判为野值时用它保持输出。count_reject / speed_reject 是
+     * 诊断计数，不占用遥测通道，可在调试器中观察。
+     */
+    float speed_guard_raw[2];
+    uint16_t speed_guard_hold[2];
+    uint16_t count_guard_hold[2];
+    float output_last[2];
+    uint32_t count_reject[2];
+    uint32_t speed_reject[2];
 
     /* 进入命令执行阶段的帧数；被状态或参数拒绝的命令也计数。 */
     uint32_t frames;
@@ -135,6 +162,21 @@ int Car_StartRace(Car_Core *c);
  * It writes the inner incremental speed loop; the outer position loop is not
  * exposed over Bluetooth and stays disabled while CAR_CASCADE_OUTER_ENABLE=0. */
 uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd);
+
+/**
+ * @brief 进入一轮开环 PWM 测试，绕过两个 PID 直接给指定轮输出。
+ * @param c     控制对象。
+ * @param wheel 轮号，0 左轮、1 右轮；一次只允许测试一轮。
+ * @param pwm   带符号 PWM 数值，范围 [-CAR_OPENLOOP_PWM_LIMIT,
+ *              CAR_OPENLOOP_PWM_LIMIT]，正负号表示方向。
+ * @return 0 成功；1 不是 RUN 状态；2 轮号或 PWM 无效。
+ * @note 调用会清空规划器和另一轮的开环状态，并刷新通信看门狗。
+ *       首次进入还要求双轮目标为零且实测转速低于 10 rpm，防止行驶中
+ *       直接切换；周期刷新不受此限制。必须在车轮架空时使用；STOP、
+ *       故障、轮速命令或超时都会撤去输出。
+ */
+uint8_t Car_SetOpenLoop(Car_Core *c, unsigned wheel, float pwm);
+
 void Car_LocalStop(Car_Core *c);
 void Car_RaceWheels(Car_Core *c, const float rpm[2]);
 

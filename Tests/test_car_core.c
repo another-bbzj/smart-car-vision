@@ -18,6 +18,11 @@ static void wheels(Car_Core *c, int l, int r)
     unsigned char p[4]={(unsigned char)(l>>8),(unsigned char)l,(unsigned char)(r>>8),(unsigned char)r};
     command(c,3,p,4);
 }
+static void openloop(Car_Core *c, unsigned wheel, int pwm)
+{
+    unsigned char p[3]={(unsigned char)wheel,(unsigned char)(pwm>>8),(unsigned char)pwm};
+    command(c,6,p,3);
+}
 static void ticks(Car_Core *c, int n, int l, int r)
 { int i; for(i=0;i<n;i++) Car_Tick(c,l,r); }
 
@@ -48,17 +53,91 @@ static void test_right_reverse_protection(void)
         assert(c.state==CAR_RUN);
     }
 }
+static void test_open_loop(void)
+{
+    Car_Core c;
+    int i;
+
+    /* 开环测试只在 RUN 接受，进入后直接覆盖 PID 输出。 */
+    Car_Init(&c);
+    openloop(&c, 0, 1500);
+    assert(c.result == 1 && c.open_loop[0] == 0 && c.output[0] == 0);
+    command(&c, 1, 0, 0);
+    openloop(&c, 0, 1500);
+    assert(c.result == 0 && c.open_loop[0] == 1 && c.open_loop_pwm[0] == 1500);
+    Car_Tick(&c, 0, 0);
+    assert(c.output[0] == 1500 && c.output[1] == 0);
+
+    /* 轮号和幅值越界必须拒绝，且保留上一帧的有效命令。 */
+    openloop(&c, 2, 1500);
+    assert(c.result == 2);
+    openloop(&c, 0, 3001);
+    assert(c.result == 2 && c.open_loop_pwm[0] == 1500);
+
+    /* 刷新命令会更新输出；轮速命令立即退出开环。 */
+    for (i = 0; i < 20; i++) {
+        if (i == 10) openloop(&c, 0, 2000);
+        Car_Tick(&c, 0, 0);
+    }
+    assert(c.state == CAR_RUN && c.open_loop[0] == 1 && c.output[0] == 2000);
+    wheels(&c, 80, 0);
+    assert(c.open_loop[0] == 0);
+    Car_Tick(&c, 0, 0);
+    assert(c.target[0] > 0);
+
+    /* 行驶目标未清零时，首次进入开环必须被拒绝。 */
+    openloop(&c, 1, -1200);
+    assert(c.result == 2 && c.open_loop[1] == 0);
+    wheels(&c, 0, 0);
+
+    /* 心跳只续租链路，不能刷新开环命令；500 ms 后开环必须自撤输出。 */
+    openloop(&c, 1, -1200);
+    assert(c.open_loop[1] == 1 && c.open_loop_pwm[1] == -1200);
+    Car_Tick(&c, 0, 0);
+    assert(c.output[1] == -1200 && c.output[0] == 0);
+    for (i = 0; i < 101; i++) {
+        if (i % 20 == 0) command(&c, 5, 0, 0);
+        Car_Tick(&c, 0, 0);
+    }
+    assert(c.state == CAR_RUN && c.open_loop[1] == 0 && c.output[1] == 0);
+
+    /* STOP 必须清除两轮的开环状态。 */
+    openloop(&c, 0, 1000);
+    command(&c, 2, 0, 0);
+    assert(c.open_loop[0] == 0 && c.open_loop[1] == 0);
+
+    /* 开环没有参考转速，但堵转保护仍须工作。 */
+    command(&c, 1, 0, 0);
+    openloop(&c, 0, 1500);
+    for (i = 0; i < 320 && c.state == CAR_RUN; i++) {
+        if (i % 20 == 0) openloop(&c, 0, 1500);
+        Car_Tick(&c, 0, 0);
+    }
+    assert(c.state == CAR_FAULT && c.fault == CAR_STALL_FAULT);
+
+    /* 开环方向反馈相反时，方向保护仍须工作。 */
+    Car_Init(&c);
+    command(&c, 1, 0, 0);
+    openloop(&c, 0, 1500);
+    for (i = 0; i < 400 && c.state == CAR_RUN; i++) {
+        if (i % 20 == 0) openloop(&c, 0, 1500);
+        Car_Tick(&c, -4, 0);
+    }
+    assert(c.state == CAR_FAULT && c.fault == CAR_DIRECTION_FAULT);
+}
+
 int main(void)
 {
     Car_Core c;
     test_right_reverse_protection();
+    test_open_loop();
     { const unsigned char *p=(const unsigned char *)"123456789"; unsigned char crc=0;
       while(*p) { crc=Car_Crc8(crc,*p++); }
       assert(crc==0xf4); }
     Car_Init(&c);
     assert(c.state==CAR_STOP && c.output[0]==0);
     wheels(&c,80,80); assert(c.target[0]==0 && c.result==1);
-    command(&c,1,0,0); wheels(&c,800,-800);
+    command(&c,1,0,0); wheels(&c,1200,-1200);
     assert(c.target[0]==CAR_RPM_LIMIT && c.target[1]==-CAR_RPM_LIMIT);
     Car_Tick(&c,0,0); assert(c.reference[0]>0 && c.reference[0]<=1 && c.reference[1]==-c.reference[0]);
     ticks(&c,99,0,0); assert(c.state==CAR_FAULT && c.fault==CAR_LINK_FAULT);
@@ -132,8 +211,12 @@ int main(void)
         assert(c.speed[0]>alpha*27.0f*0.95f && c.speed[0]<alpha*27.5f*1.05f);
     }
     /* Identical encoder input and targets must produce identical speed and PWM
-     * on both wheels, so a straight command cannot introduce a speed bias. */
+     * on both wheels, so a straight command cannot introduce a speed bias.
+     * Production defaults use wheel-specific static-friction feedforward;
+     * zero it here to isolate the symmetric control law. */
     Car_Init(&c);
+    c.pid_speed[0].ks = 0.0f;
+    c.pid_speed[1].ks = 0.0f;
     command(&c,1,0,0); wheels(&c,90,90);
     { int i; for(i=0;i<100;i++) {
         if(i%20==0) command(&c,5,0,0);
