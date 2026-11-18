@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "Car_Config.h"
 #include "Car_PID.h"
 #include "Car_Reference.h"
 
@@ -80,6 +81,17 @@ typedef struct
     float reference[2];      /* 内环转速给定，单位 rpm：外环关闭时等于规划器输出 */
     float speed[2];          /* 滤波后的实测转速，单位 rpm，下标 0 左、1 右 */
     float output[2];         /* 带符号 PWM 输出，正负号表示方向，下标 0 左、1 右 */
+
+    /*
+     * 测速滑动窗口。每个控制周期把本拍编码器增量和对应时间压入环形缓冲，
+     * 用最近 CAR_SPEED_WINDOW_TICKS 拍的计数和、时间和计算转速，把低分辨率
+     * 编码器的量化台阶摊平。左右轮各有一组，复位时一起清空，保证两轮使用
+     * 完全相同的测速条件。
+     */
+    int32_t speed_counts[2][CAR_SPEED_WINDOW_TICKS]; /* 每拍有符号计数增量 */
+    uint32_t speed_dt_us[2][CAR_SPEED_WINDOW_TICKS]; /* 与计数对应的实测周期 */
+    uint8_t speed_index[2];  /* 环形缓冲写指针，0..CAR_SPEED_WINDOW_TICKS-1 */
+    uint8_t speed_fill[2];   /* 已填入的有效拍数，上电后从 0 增长到窗口长度 */
 
     /* ---------- 计时与保护，单位均为微秒 ---------- */
     uint32_t link_us;        /* 运行通信看门狗计时 */

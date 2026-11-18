@@ -21,7 +21,8 @@
  *   1. 检查实际周期是否在允许范围内，越界立即进入时序故障；
  *   2. 检查蓝牙半帧超时和运行通信看门狗；
  *   3. 运行状态下推进双轮共享进度的五次参考曲线；
- *   4. 用编码器增量计算实测转速并做一阶低通，同时累计输出轴位置；
+ *   4. 用最近若干拍的编码器增量滑动窗口计算实测转速并做一阶低通，
+ *      同时累计输出轴位置；
  *   5. 外环启用时用位置式位置 PID 生成转速给定，否则直接使用规划器参考；
  *   6. 对每一轮执行内环增量式速度 PID，得到带符号 PWM 输出；
  *   7. 检查堵转和方向异常，必要时锁存故障并停车。
@@ -32,6 +33,13 @@
  *       —— 求浮点数绝对值，用于速度大小判断。
  *   static float clamp(float x, float lim)
  *       —— 把浮点数限制到 [-lim, +lim]，用于目标转速限幅。
+ *   static void speed_window_clear(Car_Core *c)
+ *       —— 清空双轮测速滑动窗口，使下一次测速从空窗口开始。
+ *   static void speed_window_push(Car_Core *c, unsigned i, int32_t counts,
+ *                                 uint32_t dt_us)
+ *       —— 把本拍编码器增量与周期写入指定车轮的滑动窗口。
+ *   static float speed_window_rpm(const Car_Core *c, unsigned i)
+ *       —— 用窗口计数和/时间和计算平均转速，抑制量化台阶。
  *   static void reset_motion(Car_Core *c)
  *       —— 停止运动：清空规划器、目标、参考、位置、输出和保护计时。
  *   void Car_Init(Car_Core *c)
@@ -118,20 +126,112 @@ static float clamp(float x, float lim)
 }
 
 /*
+ * 函数名称：speed_window_clear
+ * 函数功能：清空双轮测速滑动窗口，使下一次测速从空窗口重新开始。
+ * 参数说明：c —— 控制对象。
+ * 返回参数：无。
+ * 使用示例：
+ *     speed_window_clear(c);      // 停车、故障或重新发车时
+ * 备注信息：窗口清空后测速会在接下来 CAR_SPEED_WINDOW_TICKS 拍内逐步
+ *           恢复满窗；期间按实际已填拍数求平均，不会出现虚假零速。
+ */
+static void speed_window_clear(Car_Core *c)
+{
+    unsigned i;                                      /* 双轮循环下标，0 左轮 / 1 右轮 */
+
+    for (i = 0; i < 2; i++)
+    {
+        c->speed_index[i] = 0;                       /* 写指针回到队首 */
+        c->speed_fill[i] = 0;                        /* 有效拍数清零 */
+        memset(c->speed_counts[i], 0, sizeof(c->speed_counts[i]));
+        memset(c->speed_dt_us[i], 0, sizeof(c->speed_dt_us[i]));
+    }
+}
+
+/*
+ * 函数名称：speed_window_push
+ * 函数功能：把本拍编码器增量和实测周期写入指定车轮的滑动窗口。
+ * 参数说明：c      —— 控制对象；
+ *           i      —— 轮号，0 左轮 / 1 右轮；
+ *           counts —— 本拍有符号编码器增量；
+ *           dt_us  —— 与增量对应的实测周期，单位微秒。
+ * 返回参数：无。
+ * 使用示例：
+ *     speed_window_push(c, 0, left_counts, dt_us);
+ * 备注信息：窗口满后自动覆盖最旧的一拍；写指针在 0..N-1 之间循环。
+ */
+static void speed_window_push(Car_Core *c, unsigned i, int32_t counts,
+                              uint32_t dt_us)
+{
+    unsigned index = c->speed_index[i];               /* 当前写指针 */
+
+    c->speed_counts[i][index] = counts;
+    c->speed_dt_us[i][index] = dt_us;
+
+    index++;
+    if (index >= CAR_SPEED_WINDOW_TICKS)
+    {
+        index = 0;                                    /* 环形回绕 */
+    }
+
+    c->speed_index[i] = (uint8_t)index;
+
+    if (c->speed_fill[i] < CAR_SPEED_WINDOW_TICKS)
+    {
+        c->speed_fill[i]++;                           /* 上电初期逐步填满 */
+    }
+}
+
+/*
+ * 函数名称：speed_window_rpm
+ * 函数功能：用滑动窗口内的计数和与时间和计算平均转速。
+ * 参数说明：c —— 控制对象；
+ *           i —— 轮号，0 左轮 / 1 右轮。
+ * 返回参数：窗口平均转速，单位 rpm；窗口时间为 0 时返回 0。
+ * 使用示例：
+ *     raw = speed_window_rpm(c, i);
+ * 备注信息：把有效拍数内的计数和一次性换算，等效于对窗口时间做平均，
+ *           而不是先逐拍求速再平均，因此不会把量化误差再次放大。
+ */
+static float speed_window_rpm(const Car_Core *c, unsigned i)
+{
+    int32_t counts = 0;                               /* 窗口计数和 */
+    uint32_t dt_us = 0;                               /* 窗口时间和，微秒 */
+    unsigned k;                                       /* 有效拍循环下标 */
+
+    for (k = 0; k < c->speed_fill[i]; k++)
+    {
+        counts += c->speed_counts[i][k];
+        dt_us += c->speed_dt_us[i][k];
+    }
+
+    if (dt_us == 0U)                                  /* 空窗口或异常周期 */
+    {
+        return 0.0f;
+    }
+
+    /* 转/秒 = counts / (CPR × 秒)，再乘 60 成 rpm；时间用微秒，补 1e6。 */
+    return (float)counts * (60.0f * 1000000.0f) /
+           (CAR_ENCODER_CPR * (float)dt_us);
+}
+
+/*
  * 函数名称：reset_motion
- * 函数功能：停止运动并清除规划器、PID 和保护计时。
+ * 函数功能：停止运动并清除规划器、PID、测速窗口和保护计时。
  * 参数说明：c —— 控制对象。
  * 返回参数：无。
  * 使用示例：
  *     reset_motion(c);            // STOP 命令、ARM 启动或故障时调用
  * 备注信息：保留实测转速 speed[]，供后续测速滤波继续使用；
  *           内环、外环积分和位置反馈全部清零，下一次运行从位置零点开始。
+ *           测速窗口一并清空，避免把停车前的计数带入下一次发车。
  */
 static void reset_motion(Car_Core *c)
 {
     unsigned i;                                      /* 双轮循环下标，0 左轮 / 1 右轮 */
 
     CarReference_Reset(&c->profile);
+    speed_window_clear(c);                           /* 双轮窗口同步清空 */
 
     for (i = 0; i < 2; i++)
     {
@@ -642,15 +742,20 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
     for (i = 0; i < 2; i++)
     {
         /*
-         * 计数增量 / 每圈计数 / 周期秒数 = 转/秒，
-         * 再乘以 60 换算为每分钟转数（rpm）。
+         * 先把本拍计数压入滑动窗口，再用窗口内的计数和/时间和求平均转速。
+         * 单拍 5 ms 时 1 个编码器计数折算 27.3 rpm，直接送 PID 会形成
+         * 27 rpm 的量化台阶；窗口平均后台阶缩小到 60/(CPR×窗口时间)。
+         * 左右轮使用完全相同的窗口长度和复位时机，测速口径一致。
          */
-        float raw = (float)counts[i] * (60.0f / (CAR_ENCODER_CPR * dt));
+        float raw;                                /* 窗口平均转速，rpm */
         float abs_speed;                          /* 实测转速绝对值，rpm */
 
+        speed_window_push(c, i, counts[i], dt_us);
+        raw = speed_window_rpm(c, i);
+
         /*
-         * 一阶低通滤波：系数随实际周期变化。停车时也继续更新实测转速，
-         * 便于上位机观察车轮是否真的停住。
+         * 一阶低通滤波：残量化噪声由窗口压制，这里只做最后的平滑。
+         * 系数随实际周期变化。停车时也继续更新，便于上位机观察是否停住。
          */
         c->speed[i] += (dt / (CAR_SPEED_FILTER_TAU_S + dt)) *
                        (raw - c->speed[i]);

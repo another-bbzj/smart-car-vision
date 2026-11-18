@@ -141,11 +141,16 @@ float Car_Pid_update(Car_Pid_Struct *p, float target, float measure);
  * 控制律：
  *     Δu[k] = ΔP + ΔI + ΔD + ΔFF
  *     u[k]  = u[k-1] + Δu[k]
+ *     out   = clip(u[k], output_limit)
  *
  *   其中 P、D、FF 的绝对项定义与位置式完全相同，增量由相邻两周期作差得到；
- *   ΔI 是最终接纳的积分变化量。递推使用未限幅的累加值 unclamped_output，
- *   last_output 仅保存实际限幅输出，不能作为下一周期的递推基准。
- *   每周期用绝对项重锚累加值，避免单精度差分和累加的舍入误差持续漂移。
+ *   ΔI 是最终接纳的积分变化量。核心状态是未限幅递推值 unclamped_output，
+ *   它保留 P 项的完整历史，因此 P 项顶到限幅再退出时不会产生反向冲击；
+ *   last_output 只保存实际写到执行器的限幅输出，不能作为递推基准。
+ *
+ *   抗饱和用条件积分：本拍增量会把输出进一步推入同一方向饱和时，只撤掉
+ *   积分增量，P/D/FF 仍照常响应。递推每 8 拍用绝对项重锚一次，纯为消除
+ *   单精度累加漂移，不改变控制律，也不影响限幅判定。
  */
 typedef struct
 {
@@ -183,6 +188,7 @@ typedef struct
     uint8_t started;    /* 1 表示已有上一周期测量值，可以计算微分 */
     uint8_t fault;      /* 1 表示数值异常已锁存故障，update 将返回 0 */
     uint8_t saturated;  /* 1 表示最近一次输出被限幅 */
+    uint8_t reanchor;   /* 递推重锚计数，每 16 拍用绝对项修正一次浮点漂移 */
 } Car_PidInc_Struct;
 
 /**

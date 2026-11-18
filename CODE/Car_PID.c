@@ -23,10 +23,14 @@
  *
  *   2. 增量式 PID（Car_PidInc_*）
  *      不直接计算绝对输出，而是计算本周期相对上一周期的输出增量 Δu，
- *      再累加到上一周期输出上：u[k] = u[k-1] + Δu[k]。
- *      各项定义、微分滤波、前馈、输出限幅和抗饱和策略都与位置式保持一致，
- *      便于两种算法互换、对比调试。当前 Car_Core.c 把它用作串级控制的内环
- *      速度环，蓝牙命令 4 和板端菜单调整的就是这一组增益。
+ *      再累加到上一周期的未限幅输出上：u[k] = u[k-1] + Δu[k]。
+ *      Δu = ΔP + ΔI + ΔD + ΔFF，其中各绝对项的定义与位置式一致，
+ *      增量由相邻两周期作差得到。递推保留未限幅的 u[k]，执行器只取
+ *      clip(u[k])，因此 P 项在限幅期间的历史不会丢失，退出饱和时不会
+ *      产生反向冲击。抗饱和采用条件积分：饱和时只拒绝积分增量。
+ *      每 16 拍用绝对项重锚一次，消除单精度递推漂移。
+ *      当前 Car_Core.c 把它用作串级控制的内环速度环，蓝牙命令 4 和
+ *      板端菜单调整的就是这一组增益。
  *
  * 函数列表（按文件内出现顺序）
  * ----------------------------------------------------------------------------
@@ -407,6 +411,9 @@ float Car_Pid_update(Car_Pid_Struct *p, float target, float measure)
 /*                            增量式 PID 实现                                 */
 /* ========================================================================== */
 
+/* 每 8 拍用绝对项重锚一次递推输出，抑制单精度累加漂移。 */
+#define CAR_PIDINC_REANCHOR_TICKS 8U
+
 /*
  * 函数名称：Car_PidInc_reset
  * 函数功能：保留增量式 PID 的增益与限幅配置，清除积分、微分历史、
@@ -425,6 +432,7 @@ void Car_PidInc_reset(Car_PidInc_Struct *p)
     p->derivative = 0.0f;      /* 滤波后的测量变化率清零 */
     p->last_output = 0.0f;     /* 上一拍执行器输出清零 */
     p->unclamped_output = 0.0f; /* 未限幅递推基准清零，下次从 0 累加 */
+    p->reanchor = 0;           /* 重锚计数清零 */
     p->last_p_term = 0.0f;     /* 上一拍比例项清零 */
     p->last_d_term = 0.0f;     /* 上一拍微分项清零 */
     p->last_ff_term = 0.0f;    /* 上一拍前馈项清零 */
@@ -545,7 +553,8 @@ uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float tau,
  *               u[k] = u[k-1] + Δu
  *           其中 ΔP、ΔD、ΔFF 分别是本周期项值与上一周期项值之差，
  *           ΔI 是最终接纳的积分变化量，u 是未限幅的累加值；
- *           执行器限幅仅作用于返回值。各项定义与位置式相同。
+ *           执行器限幅仅作用于返回值。递推基准是未限幅输出，不是限幅
+ *           后的执行器输出，因此饱和期间 P/FF 的历史不会被丢掉。
  */
 float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
                            float acceleration, float dt)
@@ -553,11 +562,14 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
     float error;                                           /* 速度误差 = target - measure，rpm */
     float raw_d = 0.0f;                                    /* 未滤波的测量变化率，rpm/s */
     float d_alpha;                                         /* 微分低通系数 */
-    float integral_candidate;                              /* 限幅后的积分项候选值 */
-    float integral_delta;                                  /* 本次实际接纳的积分增量 */
-    float base;                                            /* P/D/FF 总和，用于条件积分判定 */
-    float delta;                                           /* 本周期输出增量 Δu */
-    float candidate;                                       /* 上一拍输出 + 增量，未限幅 */
+    float p_term;                                          /* 本拍比例项绝对项值 */
+    float d_term;                                          /* 本拍微分项绝对项值 */
+    float ff_term;                                         /* 本拍前馈项绝对项值 */
+    float base;                                            /* 本拍 P + D + FF */
+    float integral_next;                                   /* 限幅后的积分项候选值 */
+    float integral_step;                                   /* 本拍实际接纳的积分增量 */
+    float delta;                                           /* 本拍输出增量 Δu */
+    float unclamped;                                       /* 本拍未限幅递推输出 u[k] */
     float output;                                          /* 限幅后的最终输出 */
 
     if (p->fault)                                          /* 已锁存故障，保持输出为 0 */
@@ -590,91 +602,103 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
     d_alpha = dt / (p->derivative_tau_s + dt);
     p->derivative += d_alpha * (raw_d - p->derivative);
 
-    p->p_term = p->kp * (p->beta * target - measure);      /* 比例项绝对项值 */
-    p->d_term = -p->kd * 0.005f * p->derivative;           /* 微分项绝对项值 */
-    p->ff_term = p->kv * target + p->ka * acceleration;    /* 前馈项绝对项值 */
+    p_term = p->kp * (p->beta * target - measure);         /* 比例项绝对项值 */
+    d_term = -p->kd * 0.005f * p->derivative;              /* 微分项绝对项值 */
+    ff_term = p->kv * target + p->ka * acceleration;       /* 前馈项绝对项值 */
 
     if (target > 1.0f)                                     /* 正转时叠加正向静摩擦补偿 */
     {
-        p->ff_term += p->ks;
+        ff_term += p->ks;
     }
     else if (target < -1.0f)                               /* 反转时叠加负向静摩擦补偿 */
     {
-        p->ff_term -= p->ks;
+        ff_term -= p->ks;
     }
+
+    base = p_term + d_term + ff_term;                      /* 本拍不含积分的绝对项 */
 
     /*
-     * 积分项仍显式累加，但增量式只把“本次变化量”计入输出增量。
-     * 先限制积分项自身幅值，避免积分贡献单独过大。
+     * 先按积分上限裁剪本拍积分候选值，再求“本拍接纳的积分增量”。
+     * ΔI 只把变化量计入输出，积分项自身仍受 integral_limit 约束。
      */
-    integral_candidate = clip(p->integral + p->ki * error * (dt / 0.005f),
-                              p->integral_limit);
+    integral_next = clip(p->integral + p->ki * error * (dt / 0.005f),
+                         p->integral_limit);
+    integral_step = integral_next - p->integral;
 
-    if (!number(p->p_term) || !number(p->d_term) ||
-        !number(p->ff_term) || !number(integral_candidate))
-    {
-        goto invalid;
-    }
-
-    /* 增量式核心：使用未限幅的累加基准，保留饱和时 P/D/FF 的完整历史。 */
-    integral_delta = integral_candidate - p->integral;
-    base = p->p_term + p->d_term + p->ff_term;
-    delta = (p->p_term - p->last_p_term)
-          + integral_delta
-          + (p->d_term - p->last_d_term)
-          + (p->ff_term - p->last_ff_term);
-
-    /* 与位置式使用相同的绝对项判断积分，避免递推舍入误差改变临界点决策。 */
-    candidate = base + integral_candidate;
-
-    if (!number(delta) || !number(candidate))
+    if (!number(base) || !number(integral_next) || !number(integral_step))
     {
         goto invalid;
     }
 
     /*
-     * 条件积分抗饱和（与位置式同思路）：
-     * 总输出已经顶到限幅且误差仍指向同一方向时，不接收本次积分增量，
-     * 防止退出饱和后积分残留导致反向超调。
+     * 增量式核心：Δu = ΔP + ΔI + ΔD + ΔFF，再累加到上一拍的未限幅输出。
+     * 递推基准保留完整历史，限幅只发生在最终写执行器时。
      */
-    if (!((candidate > p->output_limit && error > 0.0f) ||
-          (candidate < -p->output_limit && error < 0.0f)))
+    delta = (p_term - p->last_p_term)
+          + integral_step
+          + (d_term - p->last_d_term)
+          + (ff_term - p->last_ff_term);
+
+    unclamped = p->unclamped_output + delta;
+
+    if (!number(delta) || !number(unclamped))
     {
-        p->integral = integral_candidate;                  /* 接收本次积分增量 */
+        goto invalid;
+    }
+
+    /*
+     * 条件积分抗饱和：本拍增量会把输出进一步推入同一方向饱和时，
+     * 只撤掉积分增量，P/D/FF 仍然响应，避免积分残留导致退出饱和后超调。
+     */
+    if ((unclamped > p->output_limit && error > 0.0f) ||
+        (unclamped < -p->output_limit && error < 0.0f))
+    {
+        delta -= integral_step;
+        unclamped = p->unclamped_output + delta;
+
+        if (!number(delta) || !number(unclamped))
+        {
+            goto invalid;
+        }
     }
     else
     {
-        /* 拒绝积分时，输出与递推历史也必须撤去这部分增量。 */
-        delta = (p->p_term - p->last_p_term)
-              + (p->d_term - p->last_d_term)
-              + (p->ff_term - p->last_ff_term);
-    }
-
-    candidate = p->unclamped_output + delta;
-    if (!number(delta) || !number(candidate))
-    {
-        goto invalid;
+        p->integral = integral_next;                       /* 接收本次积分增量 */
     }
 
     /*
-     * 单精度的各项差分与累加都会舍入。按同一控制律的绝对项逐拍重锚，
-     * 避免重复输入把舍入偏差累积成持续驱动；不能只校正限幅后的输出。
+     * 周期性重锚：递推和作差都会引入单精度舍入。用同一控制律的绝对项
+     * base + integral 校正递推基准，数学上完全等价，只消除累计漂移；
+     * 不与限幅后的输出比较，因此不改变饱和判定或输出历史。
      */
-    candidate = base + p->integral;
-    if (!number(candidate))
+    p->reanchor++;
+    if (p->reanchor >= CAR_PIDINC_REANCHOR_TICKS)
+    {
+        p->reanchor = 0;
+        p->unclamped_output = base + p->integral;
+    }
+    else
+    {
+        p->unclamped_output = unclamped;
+    }
+
+    if (!number(p->unclamped_output))
     {
         goto invalid;
     }
 
-    p->saturated = (candidate > p->output_limit || candidate < -p->output_limit);
-    p->unclamped_output = candidate;                        /* 保存完整递推基准 */
-    output = clip(candidate, p->output_limit);              /* 仅对执行器输出限幅 */
+    p->saturated = (p->unclamped_output > p->output_limit ||
+                    p->unclamped_output < -p->output_limit);
+    output = clip(p->unclamped_output, p->output_limit);   /* 仅对执行器输出限幅 */
     p->last_output = output;
 
     /* 保存本拍各项值，供下一周期作差得到增量。 */
-    p->last_p_term = p->p_term;
-    p->last_d_term = p->d_term;
-    p->last_ff_term = p->ff_term;
+    p->p_term = p_term;
+    p->d_term = d_term;
+    p->ff_term = ff_term;
+    p->last_p_term = p_term;
+    p->last_d_term = d_term;
+    p->last_ff_term = ff_term;
     p->delta = delta;
 
     return output;

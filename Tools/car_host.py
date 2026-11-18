@@ -144,7 +144,7 @@ class Console:
         for wheel, label in enumerate(('左轮', '右轮')):
             ttk.Label(tuning, text=label).grid(row=wheel, column=0, padx=6)
             entries = []
-            for col, (name, default) in enumerate(zip(('Kp', 'Ki', 'Kd'), ('2.5', '0.15', '0'))):
+            for col, (name, default) in enumerate(zip(('Kp', 'Ki', 'Kd'), ('8', '0.3', '0'))):
                 ttk.Label(tuning, text=name).grid(row=wheel, column=col * 2 + 1)
                 entry = ttk.Entry(tuning, width=8)
                 entry.insert(0, default)

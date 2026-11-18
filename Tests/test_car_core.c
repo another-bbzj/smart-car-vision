@@ -116,6 +116,25 @@ int main(void)
     Car_Init(&c);
     { int i; for(i=0;i<100;i++)Car_TickDt(&c,2,2,10000); }
     assert(c.speed[0]>27.2f && c.speed[0]<27.4f); /* Two counts /10ms, not /5ms. */
+    /* Sliding speed window: one isolated burst of 8 counts is 218 rpm in a
+     * single tick, but averaged over the full 8-tick window it is 27.3 rpm.
+     * After one 5 ms filter step (alpha 0.25) the reading is 6.8 rpm, not
+     * the 54.5 rpm a single-tick measurement would produce. */
+    Car_Init(&c);
+    { int i; for(i=0;i<(int)CAR_SPEED_WINDOW_TICKS;i++)Car_Tick(&c,0,0); }
+    Car_Tick(&c,8,8);
+    assert(c.speed[0]>6.0f && c.speed[0]<7.6f);
+    /* Identical encoder input and targets must produce identical speed and PWM
+     * on both wheels, so a straight command cannot introduce a speed bias. */
+    Car_Init(&c);
+    command(&c,1,0,0); wheels(&c,90,90);
+    { int i; for(i=0;i<100;i++) {
+        if(i%20==0) command(&c,5,0,0);
+        Car_Tick(&c,4,4);
+    } }
+    assert(c.speed[0]==c.speed[1]);
+    assert(c.output[0]==c.output[1]);
+    assert(c.state==CAR_RUN);
     Car_Init(&c);
     command(&c,1,0,0); wheels(&c,-180,180);
     { int i; for(i=0;i<60 && c.state==CAR_RUN;i++) {

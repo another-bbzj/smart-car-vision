@@ -62,8 +62,19 @@
 /* 允许的实测控制周期范围（微秒）；超出范围触发时序故障。 */
 #define CAR_MIN_CONTROL_US      1000U
 #define CAR_MAX_CONTROL_US      15000U
-/* 实测速度低通时间常数（秒）；值越大越平滑，同时反馈延迟越大。 */
-#define CAR_SPEED_FILTER_TAU_S  0.005f
+/* 测速滑动窗口长度（控制周期数）。内环测速不再用单拍计数，而是对最近
+ * CAR_SPEED_WINDOW_TICKS 拍的计数和时间求和：
+ *     转速 = 窗口计数和 × 60 / (CPR × 窗口时间和)
+ * 5 ms 单拍时 1 个计数 = 27.3 rpm，PID 只能在这条 27 rpm 的台阶上工作；
+ * 8 拍（40 ms）后 1 个计数 = 3.4 rpm，测速噪声下降约 8 倍。
+ * 窗口越长分辨率越高，但测速延迟约为窗口的一半；调大时需同步复核增益。 */
+#define CAR_SPEED_WINDOW_TICKS  8U
+#if CAR_SPEED_WINDOW_TICKS < 1U || CAR_SPEED_WINDOW_TICKS > 32U
+#error CAR_SPEED_WINDOW_TICKS must be 1..32
+#endif
+/* 实测速度一阶低通时间常数（秒）。窗口已经滤掉大部分量化噪声，这里只做
+ * 残余抑制；值越大越平滑，同时反馈延迟越大。 */
+#define CAR_SPEED_FILTER_TAU_S  0.015f
 /* 前馈系数须在本车辨识：Ks 为 PWM 数值，Kv 为 PWM/rpm，Ka 为 PWM/(rpm/s)。 */
 #define CAR_FF_KS               0.0f
 #define CAR_FF_KV               0.0f
@@ -76,9 +87,13 @@
 #define CAR_FRAME_TIMEOUT_MS    100U
 #define CAR_STALL_TIMEOUT_MS    1500U
 #define CAR_DIRECTION_TIMEOUT_MS 1000U
-/* Ki/Kd 沿用 5 ms 离散增益，具体换算见 Car_PID.h。 */
-#define CAR_DEFAULT_KP         2.5f
-#define CAR_DEFAULT_KI         0.15f
+/* Ki/Kd 沿用 5 ms 离散增益，具体换算见 Car_PID.h。
+ * 这组默认值配合 8 拍测速窗口使用：单计数噪声约 3.4 rpm，Kp=8 时对应
+ * 约 27 PWM（0.27% 占空比）的残余纹波，既能明显快于旧默认值，又不会
+ * 像 Kp=100 那样把噪声放大成开关式抖动。转速—增益参考表见
+ * Docs/Speed_PID_Tuning_Guide.md。 */
+#define CAR_DEFAULT_KP         8.0f
+#define CAR_DEFAULT_KI         0.30f
 #define CAR_DEFAULT_KD         0.0f
 /* 串级 PID：外环位置环用位置式（Car_Pid_*），内环速度环用增量式
  * （Car_PidInc_*）。内环增益沿用上面的 CAR_DEFAULT_KP/KI/KD，蓝牙命令 4
