@@ -48,7 +48,7 @@ SHA256: A4090473B087C02703805853C36AC6FF07263C7D5B581BD4B50E3C32BFDEFB96
 | `CODE/Car_Hardware.c/.h` | 外设初始化、控制节拍、FIFO、运动输出、前台任务和共享快照 | 硬件/集成人员；保持一个主维护人 |
 | `CODE/Car_Config.h` | 引脚、周期、CPR、速度/PWM限幅、PID 默认值和保护阈值 | 全组共同确认配置 |
 | `CODE/Car_Core.c/.h` | 整车状态、蓝牙解析、轮速反馈、参考值推进、PID 和保护 | 底盘控制人员 |
-| `CODE/Car_PID.c/.h` | 位置式与增量式 PID 纯算法；当前整车调用位置式 | 速度环人员 |
+| `CODE/Car_PID.c/.h` | 位置式与增量式 PID 纯算法；内环速度环调用增量式，外环位置环调用位置式（默认关闭） | 速度环人员 |
 | `CODE/Car_Reference.c/.h` | 手动模式双轮共享进度的五次参考曲线 | 速度环人员 |
 | `CODE/Car_Race.c/.h` | 曲率到双轮目标、里程/航向、断路、绕黄障、红障停等、练习终点 | 任务控制人员 |
 | `CODE/Car_Vision.c/.h` | 视觉字节协议、校验、会话/序号、观测与四块缓存 | 通信人员，与视觉侧共同维护契约 |
@@ -145,8 +145,9 @@ flowchart TD
 | 目标转速上限 | ±180 rpm | `CAR_RPM_LIMIT` |
 | PWM 上限 | ±3500，满量程 10000 | `CAR_PWM_LIMIT`，即 ±35% |
 | 参考加速度/加加速度 | 200 rpm/s；800 rpm/s² | `Car_Config.h`；自主流式参考只有加速度限幅，不能声称同时保证 jerk |
-| 速度反馈低通 | 0.005 s | `CAR_SPEED_FILTER_TAU_S` |
-| 默认 PID | 两轮均 Kp=2.0，Ki=0.12，Kd=0 | `Car_Config.h`；有效保存记录优先于这些默认值 |
+| 测速窗口 | 8 个控制周期（40 ms）计数滑动平均 | `CAR_SPEED_WINDOW_TICKS`；单计数约 3.4 rpm |
+| 速度反馈低通 | 0.015 s | `CAR_SPEED_FILTER_TAU_S`；叠加在窗口之后 |
+| 默认 PID | 两轮均 Kp=8.0，Ki=0.30，Kd=0 | `Car_Config.h`；有效保存记录优先于这些默认值，详见[调参指引](Speed_PID_Tuning_Guide.md) |
 | 微分滤波/目标权重 | 0.020 s / 1.0 | `CAR_PID_D_TAU_S` / `CAR_PID_SETPOINT_WEIGHT` |
 | 前馈 | Ks/Kv/Ka 均为 0 | `Car_Config.h`，未做本车辨识 |
 | 轮半径/轮距 | 0.0325 m / 0.173 m | `Car_Race.h`，轮距为几何初值 |
@@ -159,7 +160,8 @@ flowchart TD
 坐标统一：轮 0 左、轮 1 右；前进轮速为正；车体向左/逆时针为正。运动学使用 m、s、rad；菜单角速度显示 °/s、航向显示 °。`Race_Step()` 的 `left_m/right_m` 是本周期位移增量，不是累计路程。
 
 ```text
-raw_rpm = encoder_delta × 60 / (440 × dt_s)
+raw_rpm = Σ(最近 8 拍 encoder_delta) × 60 / (440 × Σ(最近 8 拍 dt_s))
+speed   = 一阶低通(raw_rpm, τ = 0.015 s)
 ds      = (left_m + right_m) / 2
 dyaw    = (right_m - left_m) / track_m
 left_rpm  = (v - omega × track_m/2) × 60 / (2π × radius_m)
@@ -180,7 +182,7 @@ right_rpm = (v + omega × track_m/2) × 60 / (2π × radius_m)
 | `Car_LocalStop()` | 本地停车与清故障 | 清目标/参考/PID动态状态和自主权；保留 PID 增益 |
 | `Car_Fault()` | 记录故障并撤去输出 | 保留首次故障原因；恢复需显式停车/清故障 |
 
-手动模式使用 `CarReference_Update()` 的双轮共享五次曲线；自主模式每拍跟随流式轮速目标，用两轮共享比例的加速度限幅。当前速度环调用 `Car_Pid_update_dt()`，增量式 PID 虽有实现和测试，但未接入整车调用链。
+手动模式使用 `CarReference_Update()` 的双轮共享五次曲线；自主模式每拍跟随流式轮速目标，用两轮共享比例的加速度限幅。当前内环速度环调用 `Car_PidInc_update_dt()`（增量式），外环位置环调用 `Car_Pid_update_dt()`（位置式，`CAR_CASCADE_OUTER_ENABLE=0` 时旁路）。
 
 PID 的 Ki/Kd 是沿用 5 ms 的离散约定，不可直接套入其他库的连续参数：
 
@@ -321,7 +323,7 @@ VERSION=1，多字节字段大端；CRC16-CCITT-FALSE：0x1021、初值 0xFFFF�
 | 想做的工作 | 修改起点 | 同步检查 |
 |---|---|---|
 | 换电机、改减速比/编码器 | `Car_Config.h` 的 CPR、符号及限幅 | 转速、里程、圈数、断路距离会一起受影响 |
-| 修改速度环/改用增量式 PID | `Car_PID` 与 `Car_Core` 调用链 | dt、Ki/Kd语义、复位、饱和、换向、遥测；不能只增加新函数而不切调用 |
+| 修改内环速度环增益/算法 | `Car_Config.h` 默认值或蓝牙命令 4；算法在 `Car_PID` | 测速窗口、dt、Ki/Kd 语义、复位、饱和、换向、左右轮一致性；先看[调参指引](Speed_PID_Tuning_Guide.md)，不能只增加新函数而不切调用 |
 | 改轮径/轮距/绕行方向 | `Car_Race.h` | 运动学单位、陀螺符号、双圈仿真 |
 | 增加赛项/盲盒 | `RacePhase`、`Race_Step()` | 明确进入/结束/超时/重复触发；同步菜单阶段名称数组和 `test_car_race.c` |
 | 接入真正终点 | `Race_Step()` 的完成条件及视觉契约 | 不能把任何 FINISH 候选直接当已确认终点；保持后续静止/收块/求解流程 |

@@ -188,7 +188,7 @@ typedef struct
     uint8_t started;    /* 1 表示已有上一周期测量值，可以计算微分 */
     uint8_t fault;      /* 1 表示数值异常已锁存故障，update 将返回 0 */
     uint8_t saturated;  /* 1 表示最近一次输出被限幅 */
-    uint8_t reanchor;   /* 递推重锚计数，每 16 拍用绝对项修正一次浮点漂移 */
+    uint8_t reanchor;   /* 递推重锚计数，每 8 拍用绝对项修正一次浮点漂移 */
 } Car_PidInc_Struct;
 
 /**
