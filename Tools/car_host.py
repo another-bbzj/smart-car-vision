@@ -35,8 +35,8 @@ def packet(cmd, data=b''):
 
 
 def wheels(left, right):
-    if any(not isinstance(x, int) or abs(x) > 750 for x in (left, right)):
-        raise ValueError('轮速必须是 -750~750 的整数 rpm')
+    if any(not isinstance(x, int) or abs(x) > 900 for x in (left, right)):
+        raise ValueError('轮速必须是 -900~900 的整数 rpm')
     return packet(3, struct.pack('>hh', left, right))
 
 
@@ -50,6 +50,15 @@ def pid_packet(wheel, kp, ki, kd):
         return packet(4, bytes([wheel]) + struct.pack('>3H', *(int(x) for x in values)))
     except (InvalidOperation, ValueError):
         raise ValueError('PID 必须在 0~655.35 之间，最多两位小数') from None
+
+
+def openloop_packet(wheel, pwm):
+    """Autotune PRC helper: command 6, one wheel, signed PWM counts."""
+    if wheel not in (0, 1):
+        raise ValueError('wheel 必须是 0 或 1')
+    if not isinstance(pwm, int) or abs(pwm) > 3000:
+        raise ValueError('开环 PWM 必须是 -3000~3000 的整数')
+    return packet(6, bytes([wheel]) + struct.pack('>h', pwm))
 
 
 def mix(forward, turn_left, rpm):
@@ -125,7 +134,7 @@ class Console:
         tk.Button(actions, text='停止 / 清故障 [空格]', bg='#b42318', fg='white', command=self.stop).pack(side='left', padx=12)
         self.rpm = tk.IntVar(value=60)
         ttk.Label(actions, text='速度 rpm').pack(side='left')
-        ttk.Spinbox(actions, from_=20, to=750, increment=10, textvariable=self.rpm, width=6).pack(side='left', padx=6)
+        ttk.Spinbox(actions, from_=20, to=900, increment=10, textvariable=self.rpm, width=6).pack(side='left', padx=6)
         drive = ttk.Frame(panel)
         drive.pack(pady=4)
         for text, key, row, col in [('前进 W / ↑', 'w', 0, 1), ('左转 A / ←', 'a', 1, 0),
@@ -138,13 +147,13 @@ class Console:
         ttk.Label(panel, textvariable=self.status, wraplength=700).pack(anchor='w', pady=12)
         self.values = tk.StringVar(value='等待回传…')
         ttk.Label(panel, textvariable=self.values, font=('Consolas', 12)).pack(anchor='w')
-        tuning = ttk.LabelFrame(panel, text='停车后分别调整左右轮 PID（写入 RAM，重启加载已保存值或默认值）', padding=10)
+        tuning = ttk.LabelFrame(panel, text='停车后分别调整左右轮内环 PID（写入 RAM，重启加载已保存值或默认值）', padding=10)
         tuning.pack(fill='x', pady=14)
         self.pid_entries = []
         for wheel, label in enumerate(('左轮', '右轮')):
             ttk.Label(tuning, text=label).grid(row=wheel, column=0, padx=6)
             entries = []
-            for col, (name, default) in enumerate(zip(('Kp', 'Ki', 'Kd'), ('2.5', '0.15', '0'))):
+            for col, (name, default) in enumerate(zip(('Kp', 'Ki', 'Kd'), ('8', '0.3', '0'))):
                 ttk.Label(tuning, text=name).grid(row=wheel, column=col * 2 + 1)
                 entry = ttk.Entry(tuning, width=8)
                 entry.insert(0, default)
@@ -152,7 +161,7 @@ class Console:
                 entries.append(entry)
             self.pid_entries.append(entries)
             ttk.Button(tuning, text='写入', command=lambda w=wheel: self.set_pid(w)).grid(row=wheel, column=7, padx=8)
-        self.actual_pid = tk.StringVar(value='实际 PID：等待回传')
+        self.actual_pid = tk.StringVar(value='实际内环 PID：等待回传')
         ttk.Label(panel, textvariable=self.actual_pid).pack(anchor='w')
         ttk.Label(panel, text='松开方向键：两轮目标归零并制动。失去窗口焦点：停止并取消使能。', foreground='#555555').pack(anchor='w', pady=8)
         if args.log:
@@ -274,14 +283,14 @@ class Console:
             return
         try:
             rpm = self.rpm.get()
-            if not 20 <= rpm <= 750:
+            if not 20 <= rpm <= 900:
                 raise ValueError()
             forward = int('w' in self.keys) - int('s' in self.keys)
             left = int('a' in self.keys) - int('d' in self.keys)
             self.send(wheels(*mix(forward, left, rpm)))
         except (ValueError, self.tk.TclError):
             self.stop()
-            self.status.set('速度必须为 20~750 的整数 rpm')
+            self.status.set('速度必须为 20~900 的整数 rpm')
 
     def poll(self):
         now = time.monotonic()
@@ -306,7 +315,7 @@ class Console:
                             self.pending_arm = False
                     self.status.set(f'状态：{["停止", "运行", "故障"][state]}　{FAULTS.get(fault, "未知故障")}　指令结果：{int(sample[8])}　有效帧：{int(sample[9])}')
                     self.values.set(f'左轮 目标 {sample[2]:6.1f} / 实测 {sample[3]:6.1f} rpm  PWM {sample[6]:6.1f}%\n右轮 目标 {sample[4]:6.1f} / 实测 {sample[5]:6.1f} rpm  PWM {sample[7]:6.1f}%')
-                    self.actual_pid.set('实际 PID：左 %.2f / %.2f / %.2f　右 %.2f / %.2f / %.2f' % tuple(sample[10:16]))
+                    self.actual_pid.set('实际内环 PID：左 %.2f / %.2f / %.2f　右 %.2f / %.2f / %.2f' % tuple(sample[10:16]))
                     if self.log_file:
                         self.csv.writerow([time.time()] + list(sample))
                 if now - self.last_rx > 0.35 and (self.armed or self.pending_arm):
@@ -332,7 +341,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', help='Windows 出站蓝牙串口，例如 COM8')
     parser.add_argument('--log', help='保存回传 CSV 的路径')
-    parser.add_argument('--hex', nargs='+', help='离线生成 HEX: stop / arm / heartbeat / wheels L R / pid wheel kp ki kd')
+    parser.add_argument('--hex', nargs='+', help='离线生成 HEX: stop / arm / heartbeat / wheels L R / pid wheel kp ki kd / openloop wheel pwm')
     args = parser.parse_args()
     if args.hex:
         words = args.hex
@@ -342,6 +351,8 @@ def main():
             data = wheels(int(words[1]), int(words[2]))
         elif words[0] == 'pid' and len(words) == 5:
             data = pid_packet(int(words[1]), *words[2:])
+        elif words[0] == 'openloop' and len(words) == 3:
+            data = openloop_packet(int(words[1]), int(words[2]))
         else:
             parser.error('无效的 --hex 指令')
         print(data.hex(' ').upper())

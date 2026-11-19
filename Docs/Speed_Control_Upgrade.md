@@ -21,9 +21,11 @@
 - `Car_Core.c`：测速滤波、PID、斜坡和通信/堵转/方向期限使用实际采样间隔；数值或控制器故障停车（代码6）。保留首次故障原因。
 - STOP、故障、蓝牙双轮零速指令直接清除参考曲线、加速度和PID历史，输出归零，绕过平顺性限制；机械停车距离仍须实测。
 
-`CAR_PID_D_TAU_S`、`CAR_PID_SETPOINT_WEIGHT`、`CAR_ACCEL_LIMIT_RPM_S`和`CAR_JERK_LIMIT_RPM_S2`集中在Car_Config.h。前馈`CAR_FF_KS/KV/KA`默认全0，只能根据本车数据标定后启用；单位为PWM计数、rpm、rpm/s，未做电池电压补偿，不能直接照抄以伏特为单位的系数。内部接口`Car_Pid_configure`仅应在停车状态调用。
+`CAR_PID_D_TAU_S`、`CAR_PID_SETPOINT_WEIGHT`、`CAR_ACCEL_LIMIT_RPM_S`和`CAR_JERK_LIMIT_RPM_S2`集中在Car_Config.h。前馈`CAR_FF_KS_LEFT/RIGHT`按轮配置，2026-11-18 第二轮架空开环阶跃按“从静止能稳定起步”取 500/800（左轮 5%、右轮 8%），`CAR_FF_KV/KA`默认0；单位为PWM计数、rpm、rpm/s，未做电池电压补偿，不能直接照抄以伏特为单位的系数。内部接口`Car_Pid_configure`仅应在停车状态调用。
 
-先架空标定CPR/方向，再以PI为主调整速度环；D项只在记录证明有收益时小量加入。当前RPM/PWM上限仍为180rpm/35%，没有自动提高。高速过弯还需测量轮径轮距和抓地极限，实施由曲率决定的速度规划，以及IMU/视觉外环；不能只增加PID增益。
+网页调试台另提供内环自动调参：命令 6 做开环 PWM 阶跃，100 ms 遥测采集 PWM/rpm，网页拟合 FOPDT 并计算 CHR/IMC/AIMC 增益。它适配了 mazj/PythonPID_Tuner 面向慢过程的固定窗口，不是直接运行原工具；仅在车轮架空时使用，外环仍不可调。见[内环自动调参](Auto_Tuning.md)。
+
+先架空标定CPR/方向，再以PI为主调整速度环；D项只在记录证明有收益时小量加入。当前限幅按满量程的 90% 统一配置为 900rpm / 9000（满量程 1000rpm / 10000），超速报错同为 900rpm；本次只调整安全边界，没有依据实测宣称性能或过弯精度提高。高速过弯还需测量轮径轮距和抓地极限，实施由曲率决定的速度规划，以及IMU/视觉外环；不能只增加PID增益。
 
 ## 验证
 

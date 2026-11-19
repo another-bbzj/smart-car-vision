@@ -19,7 +19,7 @@ static int valid(const CarParams *p) {
 }
 void CarParams_Capture(const Car_Core *c, CarParams *p) {
     unsigned w;
-    for(w=0;w<2;w++) { p->gain[w][0]=c->pid[w].kp; p->gain[w][1]=c->pid[w].ki; p->gain[w][2]=c->pid[w].kd; }
+    for(w=0;w<2;w++) { p->gain[w][0]=c->pid_speed[w].kp; p->gain[w][1]=c->pid_speed[w].ki; p->gain[w][2]=c->pid_speed[w].kd; }
 }
 int CarParams_Apply(Car_Core *c,const CarParams *p) {
     Car_Core next;

@@ -18,7 +18,8 @@ namespace fs = std::filesystem;
 struct Arguments {
     std::string source, path, output, configPath, visionUart;
     TrackMode mode = TrackMode::Hsv;
-    bool tcp = false, show = false, sendHello = false;
+    bool tcp = false, show = false, sendHello = false, http = false;
+    int httpPort = HTTP_PORT;
     int maxFrames = 0, saveEvery = 1;
 };
 
@@ -31,6 +32,8 @@ void usage() {
         "  --max-frames N        stop after N frames, 0 means unlimited\n"
         "  --show               local windows; ESC/q quits, SPACE pauses replay\n"
         "  --tcp                enable original TCP viewer on port 9000\n"
+        "  --http               enable browser viewer; open http://<board-ip>:8080/\n"
+        "  --http-port N        browser viewer port, default 8080\n"
         "  --vision-uart DEV    live camera: send track and Sudoku tiles on UART (115200)\n"
         "  --hello              send new-session HELLO; use only while F407 is STOPPED\n"
         "No actuator commands are transmitted. Inputs must be 640x480.\n";
@@ -65,12 +68,15 @@ Arguments parse(int argc, char** argv) {
         else if (key == "--max-frames") a.maxFrames = integer(value(), "--max-frames", 0);
         else if (key == "--save-every") a.saveEvery = integer(value(), "--save-every", 1);
         else if (key == "--tcp") a.tcp = true;
+        else if (key == "--http") a.http = true;
+        else if (key == "--http-port") a.httpPort = integer(value(), "--http-port", 1);
         else if (key == "--show") a.show = true;
         else if (key == "--vision-uart") a.visionUart = value();
         else if (key == "--hello") a.sendHello = true;
         else throw std::invalid_argument("Unknown argument: " + key);
     }
     if (a.source.empty()) throw std::invalid_argument("An input source is required; use --help");
+    if (a.httpPort > 65535) throw std::invalid_argument("Invalid --http-port");
     if (!a.visionUart.empty() && a.source != "--camera")
         throw std::invalid_argument("Vision UART output is allowed only with live --camera input, never image/video replay");
     return a;
@@ -115,10 +121,11 @@ int main(int argc, char** argv) {
             visionSession = (static_cast<std::uint32_t>(random()) << 1) ^ static_cast<std::uint32_t>(random());
             if (visionSession == 0) visionSession = 1;
             visionSender = std::make_unique<vision_link::SerialSender>(args.visionUart, visionSession);
-            std::cerr << "Vision UART enabled at 115200 8N1; verify F407 is STOPPED before --hello.\\n";
+            std::cerr << "Vision UART enabled at 115200 8N1; verify F407 is STOPPED before --hello.\n";
             if (args.sendHello) visionSender->sendHello();
         }
         if (args.tcp) remote.enable();
+        if (args.http) remote.enableHttp(static_cast<uint16_t>(args.httpPort));
         std::ofstream csv, sudokuCsv;
         if (!args.output.empty()) {
             if (!fs::create_directory(args.output)) throw std::runtime_error("Output directory already exists");

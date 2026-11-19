@@ -17,12 +17,15 @@
  *
  * 本文件掌管的外设：
  *   - TIM8_CH1 / TIM2_CH3：左右轮 PWM；
- *   - PC7 / PA5：左右轮方向引脚（PA5 与 Flash 片选复用，初始化时先拉高 CS）；
- *   - TIM4 / TIM3：左右轮正交编码器；
+ *   - PC7 / PA5：左右轮方向引脚（PA5 与板载 W25Q 的 SCK 复用，
+ *                初始化时先把 PB0 片选拉高）；
+ *   - TIM4 / TIM3：左右轮正交编码器（TIM3 的 PA6/PA7 与 W25Q 的
+ *                  MISO/MOSI 复用）；
  *   - USART1：蓝牙 JDY-31，NEUQ 库设备索引 0（PA9 TX / PA10 RX）；
  *   - USART3：香橙派视觉串口，NEUQ 库设备索引 2（PB10 TX / PB11 RX）；
- *   - TIM5：1 MHz 自由运行计数器，用于测量真实控制周期；
- *   - PIT_CH1：5 ms 控制节拍，实际周期由 TIM5 修正。
+ *   - TIM5：默认 1 MHz 自由运行计数器，用于测量真实控制周期；启用
+ *           CAR_RIGHT_ENCODER_ON_TIM5 后改作右编码器，时基切换到 TIM7；
+ *   - PIT_CH1：5 ms 控制节拍，实际周期由上述时基修正。
  *
  * 执行上下文
  * ----------------------------------------------------------------------------
@@ -33,7 +36,8 @@
  * 函数列表（按文件内出现顺序）
  * ----------------------------------------------------------------------------
  *   static uint8_t init_control_clock(void)
- *       —— 把 TIM5 配置成 1 MHz 自由运行计数器，为周期测量提供微秒时基。
+ *       —— 把控制时基（默认 TIM5，C 方案下为 TIM7）配置成 1 MHz
+ *          自由运行计数器，为周期测量提供微秒时基。
  *   static void output(unsigned i, float value)
  *       —— 把带符号 PWM 数值写到指定轮的 PWM 和方向引脚。
  *   static int32_t delta_count(unsigned i, TIM_HandleTypeDef *timer)
@@ -84,6 +88,9 @@ extern uint8_t UART_2_RX_dat;
 /* 左右轮编码器定时器句柄，来源：NEUQ_Encoder_init 初始化。 */
 extern TIM_HandleTypeDef Encoder_TIM3_Handle;
 extern TIM_HandleTypeDef Encoder_TIM4_Handle;
+#if CAR_RIGHT_ENCODER_ON_TIM5
+extern TIM_HandleTypeDef Encoder_TIM5_Handle;
+#endif
 
 
 /* ========================================================================== */
@@ -209,7 +216,7 @@ static void poll_menu(void)
     }
     if (row == UI_ROWS) {
         unsigned i;
-        const Car_Pid_Struct *pid;
+        const Car_PidInc_Struct *pid;
         if (now-last < 120U) return;
         last = now;
         mask = __get_PRIMASK();
@@ -226,6 +233,7 @@ static void poll_menu(void)
         view.autonomous = car.autonomous;
         view.fault = car.fault;
         view.phase = (uint8_t)race.phase;
+        view.degraded = car.autonomous ? race.degraded : 0;
         view.lap = race.lap;
         view.distance = race.distance;
         view.yaw_deg = race.yaw * 57.29578f;
@@ -234,11 +242,14 @@ static void poll_menu(void)
             view.reference[i] = car.reference[i];
             view.pwm[i] = car.output[i]/100.0f;
         }
-        pid = &car.pid[menu.group == MENU_RIGHT_PID];
+        pid = &car.pid_speed[menu.group == MENU_RIGHT_PID];
         view.gains[0] = pid->kp;
         view.gains[1] = pid->ki;
         view.gains[2] = pid->kd;
         view.fresh = !vision_rx_fault && CarVision_GetObservation(&vision,now,&view.obs);
+        view.vision_ok = vision.accepted_frames;
+        view.vision_bad = vision.bad_frames;
+        view.vision_rejected = vision.rejected_frames;
         view.tile_mask = (result_status == SUDOKU_COLLECTING || result_status == SUDOKU_WAITING) ?
             copy_tiles(NULL,now) : finish_tile_mask;
         shown_result = result_status;
@@ -322,13 +333,13 @@ static uint8_t vision_buffer[512];
 /* 编码器上次采样值：由 PIT 中断维护，用于计算 16 位计数器增量。 */
 static uint16_t previous[2];
 
-/* TIM5 微秒控制时钟：提供实际周期测量，避免中断抖动影响速度计算。 */
+/* 微秒控制时钟：默认 TIM5；启用 C 方案时改为 TIM7，提供实际周期测量。 */
 static TIM_HandleTypeDef control_clock;
 
-/* 上一次控制周期结束时的 TIM5 计数值，单位微秒。 */
+/* 上一次控制周期结束时的时基计数值，单位微秒。 */
 static uint32_t last_control_us;
 
-/* TIM5 初始化结果：1 表示控制时钟可用，0 表示测周期失败。 */
+/* 控制时基初始化结果：1 表示可用，0 表示测周期失败。 */
 static uint8_t control_clock_ready;
 
 /* reverse[i]：当前方向对应的逻辑方向，1 表示反向；
@@ -362,23 +373,40 @@ static const uint8_t forward_high[2] =
 /* ========================================================================== */
 
 /*
+ * 函数名称：encoder_input_filter
+ * 函数功能：为编码器定时器的 TI1/TI2 设置输入滤波，抑制窄脉冲。
+ * 参数说明：tim    —— TIM3/TIM4/TIM5；
+ *           filter —— 0..15，写入 CCMR1 的 IC1F/IC2F。
+ * 返回参数：无。
+ * 使用示例：
+ *     encoder_input_filter(TIM4, CAR_ENCODER_IC_FILTER);
+ * 备注信息：编码器模式 TI12 只使用 TI1/TI2，对应 CCMR1 的 IC1F(bit7:4)
+ *           和 IC2F(bit15:12)。只改这两个字段，保留 CC1S/CC2S 的输入模式。
+ */
+static void encoder_input_filter(TIM_TypeDef *tim, uint32_t filter)
+{
+    uint32_t f = filter & 0x0FU;
+    tim->CCMR1 = (tim->CCMR1 & ~0x0000F0F0U) | (f << 4) | (f << 12);
+}
+
+/*
  * 函数名称：init_control_clock
- * 函数功能：把 TIM5 配置成 1 MHz 自由运行计数器，为控制周期测量提供
- *           微秒级时基。
+ * 函数功能：把 1 MHz 自由运行计数器配置成控制周期测量的微秒时基。
  * 参数说明：无。
  * 返回参数：1 成功；0 时钟频率无法整除 1 MHz 或 HAL 初始化失败。
  * 使用示例：
  *     control_clock_ready = init_control_clock();
  *     last_control_us = __HAL_TIM_GET_COUNTER(&control_clock);
- * 备注信息：TIM5 不占用编码器引脚，只用于测量控制周期的真实长度。
- *           计数器周期为 32 位最大值，约 71 分钟自然回绕一次；
- *           无符号减法允许跨越一次回绕。
+ * 备注信息：默认使用 TIM5（32 位，约 71 分钟自然回绕）。启用
+ *           CAR_RIGHT_ENCODER_ON_TIM5 后 TIM5 改作右编码器，时基切换到
+ *           TIM7（16 位，约 65.5 ms 回绕）；周期测量处按 uint16_t 处理
+ *           回绕，5 ms 控制周期远小于 65.5 ms。
  */
 static uint8_t init_control_clock(void)
 {
     RCC_ClkInitTypeDef clocks;                                    /* 当前系统时钟配置 */
     uint32_t latency;                                             /* Flash 等待周期，本函数不使用 */
-    uint32_t timer_hz;                                            /* TIM5 输入时钟频率，Hz */
+    uint32_t timer_hz;                                            /* 时基定时器输入时钟，Hz */
 
     HAL_RCC_GetClockConfig(&clocks, &latency);
 
@@ -396,11 +424,16 @@ static uint8_t init_control_clock(void)
         return 0;
     }
 
+#if CAR_RIGHT_ENCODER_ON_TIM5
+    __HAL_RCC_TIM7_CLK_ENABLE();                                  /* 打开 TIM7 时钟 */
+    control_clock.Instance = TIM7;                                /* TIM5 让给右编码器 */
+    control_clock.Init.Period = 0xFFFFU;                          /* 16 位自由运行 */
+#else
     __HAL_RCC_TIM5_CLK_ENABLE();                                  /* 打开 TIM5 时钟 */
-
     control_clock.Instance = TIM5;                                /* 使用 TIM5 */
-    control_clock.Init.Prescaler = timer_hz / 1000000U - 1U;      /* 分频到 1 MHz */
     control_clock.Init.Period = 0xFFFFFFFFU;                      /* 32 位自由运行 */
+#endif
+    control_clock.Init.Prescaler = timer_hz / 1000000U - 1U;      /* 分频到 1 MHz */
     control_clock.Init.CounterMode = TIM_COUNTERMODE_UP;          /* 向上计数 */
     control_clock.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;    /* 不分频 */
     control_clock.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -646,7 +679,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
  *     {
  *         Car_PIT_Handler();
  *     }
- * 备注信息：实际周期由 TIM5 测得，控制与保护都使用实测周期。
+ * 备注信息：实际周期由控制时基测得，控制与保护都使用实测周期。
  *           执行顺序固定为：故障处理 -> 编码器 -> 蓝牙解析 -> 控制输出
  *           -> 视觉解析 -> 遥测入队，确保电机输出不受视觉解析耗时影响。
  */
@@ -664,11 +697,23 @@ void Car_PIT_Handler(void)
               ? __HAL_TIM_GET_COUNTER(&control_clock)
               : 0U;
 
-    /* 无符号减法允许微秒计数器跨越一次自然回绕。 */
+    /*
+     * 无符号减法允许微秒计数器跨越一次自然回绕。默认 TIM5 为 32 位；
+     * 启用 C 方案后时基是 16 位的 TIM7，先截断到 uint16_t 再相减，
+     * 5 ms 控制周期远小于 65.536 ms 的回绕周期。
+     */
+#if CAR_RIGHT_ENCODER_ON_TIM5
+    dt_us = (uint16_t)((uint16_t)sample_us - (uint16_t)last_control_us);
+#else
     dt_us = sample_us - last_control_us;
+#endif
 
     l = delta_count(0, &Encoder_TIM4_Handle);    /* 左轮计数增量 */
+#if CAR_RIGHT_ENCODER_ON_TIM5
+    r = delta_count(1, &Encoder_TIM5_Handle);    /* 右轮计数增量（已改线） */
+#else
     r = delta_count(1, &Encoder_TIM3_Handle);    /* 右轮计数增量 */
+#endif
 
     /* 编码器安装方向与车轮前进方向不一致时，在配置中取反。 */
     if (CAR_LEFT_ENCODER_INVERT)
@@ -769,7 +814,7 @@ void Car_PIT_Handler(void)
          * 遥测顺序：
          *   0 状态，1 故障码，2/3 左轮参考/实测，4/5 右轮参考/实测，
          *   6/7 左右轮输出百分比，8 命令结果，9 帧数，
-         *   10~12 左轮 Kp/Ki/Kd，13~15 右轮 Kp/Ki/Kd。
+         *   10~12 左轮内环 Kp/Ki/Kd，13~15 右轮内环 Kp/Ki/Kd。
          */
         channels[0] = (float)car.state;
         channels[1] = (float)car.fault;
@@ -781,12 +826,12 @@ void Car_PIT_Handler(void)
         channels[7] = car.output[1] / 100.0f;
         channels[8] = (float)car.result;
         channels[9] = (float)car.frames;
-        channels[10] = car.pid[0].kp;
-        channels[11] = car.pid[0].ki;
-        channels[12] = car.pid[0].kd;
-        channels[13] = car.pid[1].kp;
-        channels[14] = car.pid[1].ki;
-        channels[15] = car.pid[1].kd;
+        channels[10] = car.pid_speed[0].kp;
+        channels[11] = car.pid_speed[0].ki;
+        channels[12] = car.pid_speed[0].kd;
+        channels[13] = car.pid_speed[1].kp;
+        channels[14] = car.pid_speed[1].ki;
+        channels[15] = car.pid_speed[1].kd;
 
         /*
          * 默认 10 Hz × (16 × 4 + 4) 字节 = 680 B/s，
@@ -814,7 +859,7 @@ void Car_PIT_Handler(void)
  *           1. 先建立控制对象和 FIFO；
  *           2. 先拉高 Flash 片选，再复用 PA5/PA6/PA7；
  *           3. 配置方向、PWM、编码器和串口；
- *           4. 建立编码器基准、启动 TIM5；
+ *           4. 建立编码器基准、启动控制时基；
  *           5. 最后启动 PIT，避免中断访问未初始化对象。
  */
 static void poll_params(void)
@@ -930,13 +975,42 @@ void Car_Main(void)
     NEUQ_Encoder_init(Encoder_TIM4,
                       Encoder_TIM4_PhaseA_PB6,
                       Encoder_TIM4_PhaseB_PB7);
+#if CAR_RIGHT_ENCODER_ON_TIM5
+    NEUQ_Encoder_init(Encoder_TIM5,
+                      Encoder_TIM5_PhaseA_PA0,
+                      Encoder_TIM5_PhaseB_PA1);
+#else
     NEUQ_Encoder_init(Encoder_TIM3,
                       Encoder_TIM3_PhaseA_PA6,
                       Encoder_TIM3_PhaseB_PA7);
+#endif
+
+    /*
+     * B 方案：两路编码器都加输入滤波。必须在这里完成，PIT 尚未启动，
+     * 不会把配置瞬间的半拍数据送进速度环。
+     */
+    encoder_input_filter(TIM4, CAR_ENCODER_IC_FILTER);
+#if CAR_RIGHT_ENCODER_ON_TIM5
+    encoder_input_filter(TIM5, CAR_ENCODER_IC_FILTER);
+#else
+    encoder_input_filter(TIM3, CAR_ENCODER_IC_FILTER);
+#endif
+
+    /*
+     * A 方案的软件侧：再次确认板载 W25Q 片选为高。右编码器 TIM3 使用
+     * PA6/PA7（W25Q 的 MISO/MOSI），右 DIR 使用 PA5（W25Q SCK）；只要
+     * CS 为高，Flash 不会驱动 MISO。固件不能替代对 PB0 焊点/上拉以及
+     * PA5/PA6/PA7 短路的物理检查；启用 C 方案后右编码器不再共用这些脚。
+     */
+    NEUQ_GPIO_write(CAR_FLASH_CS, GPIO_High);
 
     /* 在启动周期中断前建立编码器基准，首周期只计算此后产生的脉冲。 */
     previous[0] = (uint16_t)__HAL_TIM_GET_COUNTER(&Encoder_TIM4_Handle);
+#if CAR_RIGHT_ENCODER_ON_TIM5
+    previous[1] = (uint16_t)__HAL_TIM_GET_COUNTER(&Encoder_TIM5_Handle);
+#else
     previous[1] = (uint16_t)__HAL_TIM_GET_COUNTER(&Encoder_TIM3_Handle);
+#endif
 
 #if CAR_VISION_ENABLE
     NEUQ_Uart_init((UART_DEV_ENUM)CAR_VISION_UART_INDEX, CAR_VISION_UART_BAUD);
@@ -956,7 +1030,7 @@ void Car_Main(void)
 
     /*
      * 所有共享对象和外设就绪后再启动控制。
-     * 如果 TIM5 初始化失败，dt 将保持 0，Car_TickDt 会触发时序故障。
+     * 如果控制时基初始化失败，dt 将保持 0，Car_TickDt 会触发时序故障。
      */
     NEUQ_PIT_init_ms(PIT_CH1, CAR_PERIOD_MS);
 

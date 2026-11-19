@@ -5,7 +5,7 @@
 
 /* Navigation follows task2: circular lists, per-page cursor, OK applies,
  * BACK discards. The third level holds the actual action or live data. */
-static const char *const groups[] = {"Race", "Sensors", "Left wheel PID", "Right wheel PID"};
+static const char *const groups[] = {"Race", "Sensors", "Left wheel inner PID", "Right wheel inner PID"};
 static const char *const race_items[] = {"Start race", "Race status", "Sudoku result"};
 static const char *const sensor_items[] = {"Wheel speeds", "IMU / MPU6050", "Vision"};
 static const char *const gain_names[] = {"Kp", "Ki", "Kd", "Save parameters"};
@@ -58,7 +58,7 @@ MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCon
         if (m->depth < 2) {
             ++m->depth;
             if (m->depth == 2 && pid && item < 3) {
-                Car_Pid_Struct *p = &car->pid[m->group - MENU_LEFT_PID];
+                Car_PidInc_Struct *p = &car->pid_speed[m->group - MENU_LEFT_PID];
                 float gains[] = {p->kp, p->ki, p->kd};
                 m->candidate = (unsigned)(gains[item]*100.0f+0.5f);
             }
@@ -72,7 +72,7 @@ MenuAction CarMenu_Key(CarMenu *m, Key_Event_Struct key, Car_Core *car, StartCon
             }
         } else if (pid) {
             unsigned wheel = m->group - MENU_LEFT_PID;
-            Car_Pid_Struct *p = &car->pid[wheel];
+            Car_PidInc_Struct *p = &car->pid_speed[wheel];
             float gains[] = {p->kp,p->ki,p->kd};
             uint8_t result;
             gains[item] = m->candidate / 100.0f;
@@ -109,9 +109,10 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
         snprintf(s,sizeof s,"%s", v->state != CAR_STOP ? "PE10: STOP / clear fault" :
                  (m->depth < 2 ? "UP/DN move  OK enter  BACK exit" : "PE9: Back"));
     } else if (row == 8) {
-        style = v->state == CAR_FAULT ? UI_STYLE_WARN : UI_STYLE_HINT;
-        snprintf(s,sizeof s,"%s  Fault %u",v->state == CAR_STOP ? "STOP" :
-                 (v->state == CAR_FAULT ? "FAULT" : (v->autonomous ? "RACE" : "MANUAL")), (unsigned)v->fault);
+        style = (v->state == CAR_FAULT || v->degraded) ? UI_STYLE_WARN : UI_STYLE_HINT;
+        snprintf(s,sizeof s,"%s%s  Fault %u",v->state == CAR_STOP ? "STOP" :
+                 (v->state == CAR_FAULT ? "FAULT" : (v->autonomous ? "RACE" : "MANUAL")),
+                 v->degraded ? " VISION LOST" : "", (unsigned)v->fault);
     } else if (m->depth < 2) {
         unsigned n = row-1;
         if (n < (m->depth ? (group >= MENU_LEFT_PID ? 4U : 3U) : (unsigned)MENU_GROUPS)) {
@@ -132,6 +133,10 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
         if (row == 4) snprintf(s,sizeof s,"Race yaw %.1f deg",v->yaw_deg);
         if (row == 5) snprintf(s,sizeof s,"Tiles %u/4",
             (unsigned)((v->tile_mask&1)+((v->tile_mask>>1)&1)+((v->tile_mask>>2)&1)+((v->tile_mask>>3)&1)));
+        if (row == 6 && v->degraded) {
+            style = UI_STYLE_WARN;
+            snprintf(s,sizeof s,"Vision lost: last curve");
+        }
     } else if (group == MENU_RACE) {
         if (row == 2 && result != SUDOKU_SOLVED) {
             const char *status = "Collecting: solve after finish";
@@ -202,6 +207,13 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
         if (row == 4 && (v->obs.valid_mask & VISION_CURVATURE_VALID))
             snprintf(s,sizeof s,"Curvature %+.2f /m",v->obs.curvature_inv_m);
         if (row == 5) snprintf(s,sizeof s,"Element %u",(unsigned)v->obs.element);
+    }
+    /* 接收统计与是否新鲜无关：bad 表示 CRC/长度错，rejected 表示 CRC 对但
+     * 会话、序号、年龄或字段越界被业务层拒绝。两者持续增长说明协议不匹配。 */
+    if ((group == MENU_SENSORS && item == 2) && m->depth >= 2) {
+        if (row == 6) snprintf(s,sizeof s,"OK %lu  bad %lu",
+            (unsigned long)v->vision_ok,(unsigned long)v->vision_bad);
+        if (row == 7) snprintf(s,sizeof s,"Rejected %lu",(unsigned long)v->vision_rejected);
     }
     My_Lcd_print((uint8_t)row,style,"%s",s);
 }

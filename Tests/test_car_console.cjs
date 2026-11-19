@@ -49,8 +49,8 @@ test('wire commands match firmware golden vectors', () => {
   assert.equal(h.run('hex(frame(CMD_STOP))'), 'C3 3C 02 00 2A');
   assert.equal(h.run('hex(wheelsFrame(80,-80)).slice(12,23)'), '00 50 FF B0');
   assert.equal(h.run("crc8(new TextEncoder().encode('123456789'))".replace("new TextEncoder().encode('123456789')", '[49,50,51,52,53,54,55,56,57]')), 244);
-  assert.equal(h.run('clampRpm(900)'), 750);
-  assert.equal(h.run('hex(wheelsFrame(750,-750)).slice(12,23)'), '02 EE FD 12');
+  assert.equal(h.run('clampRpm(1200)'), 900);
+  assert.equal(h.run('hex(wheelsFrame(900,-900)).slice(12,23)'), '03 84 FC 7C');
 });
 
 test('left Kd telemetry is never interpreted as a direction scan result', () => {
@@ -219,4 +219,45 @@ test('canvas palette updates when the theme changes', () => {
   assert.equal(h.run('strokes[0].color'), '#e8edf3');
   h.run("setTheme('dark'); strokes.length=0; drawSpeedChart();");
   assert.equal(h.run('strokes[0].color'), '#29364a');
+});
+
+test('open-loop autotune frames match firmware golden vectors', () => {
+  const h = harness();
+  assert.equal(h.run('hex(openLoopFrame(0,1500))'), 'C3 3C 06 03 00 05 DC 2A');
+  assert.equal(h.run('hex(openLoopFrame(1,-1500))'), 'C3 3C 06 03 01 FA 24 70');
+  assert.equal(h.run('hex(openLoopFrame(0,99999))'), 'C3 3C 06 03 00 0B B8 C7');
+  assert.equal(h.run('hex(openLoopFrame(0,-99999))'), 'C3 3C 06 03 00 F4 48 CE');
+});
+
+test('FOPDT fit and gain conversion recover a fast motor model', () => {
+  const h = harness();
+  const model = h.run(`
+    (() => {
+      const points = [];
+      for (let t = 0; t <= 4.0001; t += 0.1) {
+        const x = t <= 0.05 ? 0 : 1 - Math.exp(-(t - 0.05) / 0.2);
+        points.push({t, pv: 0.05 * 1500 * x});
+      }
+      return fitFopdt(points, 0, 1500);
+    })()`);
+  assert.ok(Math.abs(model.K - 0.05) < 0.002);
+  assert.ok(Math.abs(model.tau - 0.2) < 0.02);
+  assert.ok(Math.abs(model.theta - 0.05) < 0.02);
+  assert.ok(model.r2 > 0.99);
+
+  const gains = h.run("tuneGains({K:0.05,tau:0.2,theta:0.05},'CHR')");
+  assert.ok(gains.applied.kp > 0 && gains.applied.kp <= 14);
+  assert.ok(gains.applied.ki >= 0 && gains.applied.ki <= 1.5);
+  assert.equal(gains.applied.kd, 0);
+});
+
+test('outer autotune selection is visible but cannot start', () => {
+  const h = harness();
+  h.run("$('tuneAirborne').checked = true; selectTuneLoop('outer');");
+  assert.equal(h.run("tuneOuter.attributes['aria-pressed']"), 'true');
+  assert.equal(h.run('btnTune.disabled'), true);
+  assert.ok(h.nodes.get('btnTune').textContent.includes('未开放'));
+  h.run("selectTuneLoop('inner');");
+  assert.equal(h.run("tuneInner.attributes['aria-pressed']"), 'true');
+  assert.equal(h.run('btnTune.disabled'), false);
 });

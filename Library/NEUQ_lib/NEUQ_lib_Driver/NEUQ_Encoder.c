@@ -195,7 +195,9 @@ void NEUQ_Encoder_init(Encoder_DEV_ENUM DEV_select,Encoder_PhaseA_ENUM PhaseA_se
                 case Encoder_TIM4_PhaseA_PB6:{
                     GPIO_initure.Pin=GPIO_PIN_6;
                     GPIO_initure.Mode=GPIO_MODE_AF_PP;
-                    GPIO_initure.Pull=GPIO_NOPULL;
+                    /* 左编码器与右编码器保持一致：空闲时给 A/B 确定高电平，
+                     * 避免低速起步/插头瞬断时浮空产生假边沿。 */
+                    GPIO_initure.Pull=GPIO_PULLUP;
                     GPIO_initure.Speed=GPIO_SPEED_FREQ_HIGH;
                     GPIO_initure.Alternate=GPIO_AF2_TIM4;
                     HAL_GPIO_Init(GPIOB,&GPIO_initure);
@@ -216,7 +218,8 @@ void NEUQ_Encoder_init(Encoder_DEV_ENUM DEV_select,Encoder_PhaseA_ENUM PhaseA_se
                 case Encoder_TIM4_PhaseB_PB7:{
                     GPIO_initure.Pin=GPIO_PIN_7;
                     GPIO_initure.Mode=GPIO_MODE_AF_PP;
-                    GPIO_initure.Pull=GPIO_NOPULL;
+                    /* 与 A 相同：PB7 也加上拉，左右编码器电气条件对称。 */
+                    GPIO_initure.Pull=GPIO_PULLUP;
                     GPIO_initure.Speed=GPIO_SPEED_FREQ_HIGH;
                     GPIO_initure.Alternate=GPIO_AF2_TIM4;
                     HAL_GPIO_Init(GPIOB,&GPIO_initure);
