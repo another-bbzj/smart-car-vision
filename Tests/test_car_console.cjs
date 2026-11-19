@@ -14,7 +14,7 @@ function harness({savedTheme = null, storageBlocked = false} = {}) {
     return {value: '', checked: false, disabled: false, textContent: '', children: [], attributes: {}, listeners: {},
       setAttribute(name, value) {this.attributes[name] = value;},
       classList: {add() {}, remove() {}, toggle() {}}, addEventListener(name, handler) {this.listeners[name] = handler;}, focus() {},
-      appendChild(node) {this.children.push(node);}, removeChild() {this.children.shift();}};
+      appendChild(node) {this.children.push(node);}, removeChild(node) {this.children.shift();}};
   }
   const document = {documentElement: {dataset: {}}, hidden: false, addEventListener() {},
     querySelectorAll: () => [], createElement: element,
@@ -140,11 +140,11 @@ test('fragmented and concatenated telemetry retains every complete sample', () =
 test('out-of-range PWM is rejected while high measured speed remains visible', () => {
   const h = harness();
   h.run(`app.lastSample = null; const raw = new Uint8Array(64); const dv = new DataView(raw.buffer);
-    dv.setFloat32(12,-974,true); dv.setFloat32(24,76,true); parseSample(raw);`);
+    dv.setFloat32(12,-974,true); dv.setFloat32(24,91,true); parseSample(raw);`);
   assert.equal(h.run('app.lastSample'), null);
-  h.run('dv.setFloat32(24,-75,true); parseSample(raw);');
+  h.run('dv.setFloat32(24,-90,true); parseSample(raw);');
   assert.equal(h.run('app.lastSample[3]'), -974);
-  assert.equal(h.run('app.lastSample[6]'), -75);
+  assert.equal(h.run('app.lastSample[6]'), -90);
 });
 
 test('physical WASD works when input method changes event.key', () => {

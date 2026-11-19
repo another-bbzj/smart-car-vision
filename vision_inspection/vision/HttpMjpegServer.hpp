@@ -34,6 +34,7 @@
 #include <cstring>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
@@ -99,13 +100,13 @@ public:
             listeningFd_ = -1;
         }
         cv_.notify_all();
-        std::vector<std::thread> workers;
+        std::vector<Worker> workers;
         {
             std::lock_guard<std::mutex> lock(workersMutex_);
             workers.swap(workers_);
         }
         for (auto& worker : workers) {
-            if (worker.joinable()) worker.join();
+            if (worker.thread.joinable()) worker.thread.join();
         }
     }
 
@@ -141,6 +142,11 @@ public:
     }
 
 private:
+    struct Worker {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
+
     struct Channel {
         int subscribers = 0;
         std::uint64_t generation = 0;
@@ -313,7 +319,12 @@ private:
         unsubscribe(name);
     }
 
-    void handleClient(int fd) {
+    void handleClient(int fd, std::shared_ptr<std::atomic<bool>> done) {
+        struct DoneGuard {
+            std::shared_ptr<std::atomic<bool>> flag;
+            ~DoneGuard() { flag->store(true, std::memory_order_release); }
+        } guard{std::move(done)};
+
         timeval recvTimeout{3, 0};
         ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &recvTimeout, sizeof(recvTimeout));
         timeval sendTimeout{2, 0};
@@ -375,8 +386,22 @@ private:
         ::close(fd);
     }
 
+    void reapFinishedWorkers() {
+        std::lock_guard<std::mutex> lock(workersMutex_);
+        auto it = workers_.begin();
+        while (it != workers_.end()) {
+            if (it->done->load(std::memory_order_acquire)) {
+                if (it->thread.joinable()) it->thread.join();
+                it = workers_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     void acceptLoop() {
         while (!stop_.load()) {
+            reapFinishedWorkers();
             fd_set set;
             FD_ZERO(&set);
             FD_SET(listeningFd_, &set);
@@ -393,8 +418,12 @@ private:
                 ::close(fd);
                 break;
             }
+            auto done = std::make_shared<std::atomic<bool>>(false);
             std::lock_guard<std::mutex> lock(workersMutex_);
-            workers_.emplace_back(&HttpMjpegServer::handleClient, this, fd);
+            workers_.push_back(Worker{
+                std::thread(&HttpMjpegServer::handleClient, this, fd, done),
+                done
+            });
         }
     }
 
@@ -406,7 +435,7 @@ private:
 
     std::thread acceptThread_;
     std::mutex workersMutex_;
-    std::vector<std::thread> workers_;
+    std::vector<Worker> workers_;
 
     std::mutex mutex_;
     std::condition_variable cv_;

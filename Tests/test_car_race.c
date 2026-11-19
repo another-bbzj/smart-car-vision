@@ -68,6 +68,13 @@ int main(void) {
     o.valid_mask=VISION_CURVATURE_VALID; o.curvature_inv_m=3; o.confidence=1;
     cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,0);
     assert(cmd.rpm[1]>cmd.rpm[0] && cmd.rpm[0]>0);
+    Car_Init(&car);
+    assert(Car_StartRace(&car));
+    Car_RaceWheels(&car,cmd.rpm);
+    Car_Tick(&car,0,0);
+    assert(car.reference[0]>0 && car.reference[1]>car.reference[0]);
+    Car_LocalStop(&car);
+    assert(car.state==CAR_STOP && !car.autonomous && !car.output[1]);
     /* A curvature spike beyond the chassis turning limit must not command the
      * inner wheel to reverse while the car is moving forward: it may stop, but
      * its target stays on the commanded side instead of being lost. */
@@ -77,13 +84,6 @@ int main(void) {
     o.curvature_inv_m=-15;
     cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,0);
     assert(cmd.rpm[0]>0 && cmd.rpm[1]>=0);
-    Car_Init(&car);
-    assert(Car_StartRace(&car));
-    Car_RaceWheels(&car,cmd.rpm);
-    Car_Tick(&car,0,0);
-    assert(car.reference[0]>0 && car.reference[1]>car.reference[0]);
-    Car_LocalStop(&car);
-    assert(car.state==CAR_STOP && !car.autonomous && !car.output[1]);
     /* A missing/stale link must hold the last curvature and keep driving. */
     cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,5);
     assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[0]>0 && cmd.rpm[1]>=0);
