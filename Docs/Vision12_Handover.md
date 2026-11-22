@@ -17,9 +17,9 @@
 | `vision_inspection/vision/main.cpp` | 运行入口。先处理并发送道路，每隔一帧识别数独，逐块发送 TYPE=2，同时写 `sudoku.csv` |
 | `vision_inspection/vision/vision_link.hpp` | HELLO、道路和子块编码，共用 CRC16、大端字段 |
 | `vision_inspection/vision/vision_serial.hpp` | Linux 串口发送，共用一个 session 和业务 sequence |
-| `CODE/Car_Vision.c` | F407 校验并缓存观测、子块。串口异常保留当前会话已验证的子块 |
-| `CODE/Car_Hardware.c` | 终点停车、末帧收尾、冻结题面和前台求解 |
-| `CODE/Car_Sudoku.c`、`CODE/Car_Menu.c` | 2×3 宫求解、采集进度和结果显示 |
+| `CODE/protocol/Proto_Vision.c` | F407 校验并缓存观测、子块。串口异常保留当前会话已验证的子块 |
+| `CODE/platform/Platform_Main.c` | 终点停车、末帧收尾、冻结题面和前台求解 |
+| `CODE/sudoku/Sudoku.c`、`CODE/menu/Menu_Task.c` | 2×3 宫求解、采集进度和结果显示 |
 
 新版源包的数独函数已接到主循环。定位使用 Tag 对角顺序确定方向，并寻找网格外框，使九格切分对应实际网格。新增检查覆盖识别回调越界、完整题面矛盾和多解，求解失败保持原输入或答案缓冲。
 

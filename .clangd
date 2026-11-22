@@ -30,6 +30,15 @@ CompileFlags:
     - -std=gnu99
     # AC6 的 libc 头文件，给 clang 用比 AC5 的更干净
     - -isystemC:/Keil_v5/ARM/ARMCLANG/include
+    # CODE 重构后的 8 个模块子目录；编译数据库由 uvprojx 生成，这里显式补一份
+    - -I../CODE/menu
+    - -I../CODE/driver
+    - -I../CODE/protocol
+    - -I../CODE/pid
+    - -I../CODE/sudoku
+    - -I../CODE/task
+    - -I../CODE/track
+    - -I../CODE/platform
 Diagnostics:
   UnusedIncludes: None
   Suppress: [pp_including_mainfile_in_preamble]

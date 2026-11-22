@@ -1,5 +1,6 @@
-#include "Car_Core.h"
-#include "Car_Config.h"
+#include "Task_Fsm.h"
+#include "Proto_Bluetooth.h"
+#include "Board_Config.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -138,8 +139,9 @@ int main(void)
     assert(c.state==CAR_STOP && c.output[0]==0);
     wheels(&c,80,80); assert(c.target[0]==0 && c.result==1);
     command(&c,1,0,0); wheels(&c,1200,-1200);
-    assert(c.target[0]==CAR_RPM_LIMIT && c.target[1]==-CAR_RPM_LIMIT);
-    Car_Tick(&c,0,0); assert(c.reference[0]>0 && c.reference[0]<=1 && c.reference[1]==-c.reference[0]);
+    assert(c.target[0]==BOARD_RPM_LIMIT && c.target[1]==-BOARD_RPM_LIMIT);
+    /* 参考规划器已删除：reference 在同一拍直接等于 target，不再有渐升过程。 */
+    Car_Tick(&c,0,0); assert(c.reference[0]==c.target[0] && c.reference[1]==c.target[1]);
     ticks(&c,99,0,0); assert(c.state==CAR_FAULT && c.fault==CAR_LINK_FAULT);
     assert(c.output[0]==0 && c.output[1]==0);
     command(&c,5,0,0); command(&c,1,0,0); assert(c.state==CAR_FAULT);
@@ -205,9 +207,9 @@ int main(void)
     {
         int i;
         float alpha;
-        for(i=0;i<(int)CAR_SPEED_WINDOW_TICKS;i++)Car_Tick(&c,0,0);
-        Car_Tick(&c,(int)CAR_SPEED_WINDOW_TICKS,(int)CAR_SPEED_WINDOW_TICKS);
-        alpha=0.005f/(CAR_SPEED_FILTER_TAU_S+0.005f);
+        for(i=0;i<(int)TASK_WINDOW_TICKS;i++)Car_Tick(&c,0,0);
+        Car_Tick(&c,(int)TASK_WINDOW_TICKS,(int)TASK_WINDOW_TICKS);
+        alpha=0.005f/(TASK_SPEED_FILTER_TAU_S+0.005f);
         assert(c.speed[0]>alpha*27.0f*0.95f && c.speed[0]<alpha*27.5f*1.05f);
     }
     /* Identical encoder input and targets must produce identical speed and PWM

@@ -24,7 +24,7 @@
 - 引脚和尺寸：[NEUQ_LCD200.h](../Library/NEUQ_lib/NEUQ_lib_Device/NEUQ_LCD200.h#L39-L49)
 - 初始化序列：[NEUQ_LCD200.c](../Library/NEUQ_lib/NEUQ_lib_Device/NEUQ_LCD200.c#L119-L234)
 - SPI 配置：[NEUQ_Hard_SPI.c](../Library/NEUQ_lib/NEUQ_lib_Driver/NEUQ_Hard_SPI.c#L104-L126)
-- 本工程入口：[Car_Hardware.c](../CODE/Car_Hardware.c#L1017)、[My_Lcd.c](../CODE/My_Lcd.c#L29-L33)
+- 本工程入口：[platform/Platform_Main.c](../CODE/platform/Platform_Main.c#L1017)、[driver/Drv_Lcd.c](../CODE/driver/Drv_Lcd.c#L29-L33)
 
 初始化命令序列：
 
@@ -54,7 +54,7 @@
 | 背光亮但全黑 | 通信、复位或地址窗口有问题 | SPI、DC/CS、RST、MADCTL/COLMOD |
 | 背光亮但整屏白或花屏 | 通信已通，参数不对 | `0x21` 反显、颜色格式、方向 |
 
-**第一步永远是量 PD3（BL）**。`My_Lcd_init()` 执行完后它应为高电平（约 3.3 V）。如果一直为低，说明 [NEUQ_LCD200.c:233](../Library/NEUQ_lib/NEUQ_lib_Device/NEUQ_LCD200.c#L233) 没有被执行到。
+**第一步永远是量 PD3（BL）**。`Lcd_init()` 执行完后它应为高电平（约 3.3 V）。如果一直为低，说明 [NEUQ_LCD200.c:233](../Library/NEUQ_lib/NEUQ_lib_Device/NEUQ_LCD200.c#L233) 没有被执行到。
 
 ## 3. 背光完全不亮
 
@@ -79,11 +79,11 @@
 两个容易卡住的位置：
 
 1. **`printf` 阻塞。** `NEUQ_LCD200_init` 在命令之间调用了 `printf`。如果调试串口没有初始化，`printf` 会阻塞，此时 `0x36` 已发出、参数还没发出，后续初始化全部不执行，背光也不会亮。
-   - 本工程已经在 [Car_Hardware.c:946](../CODE/Car_Hardware.c#L946) 调用 `NEUQ_Debug_set_output_enabled(0)`，`fputc` 直接返回，不会阻塞。
+   - 本工程已经在 [platform/Platform_Main.c:946](../CODE/platform/Platform_Main.c#L946) 调用 `NEUQ_Debug_set_output_enabled(0)`，`fputc` 直接返回，不会阻塞。
    - 在其他工程直接复用该驱动时，必须先初始化调试串口，或者关闭 printf 输出。
 2. **`NEUQ_LCD200_Clear()` 很慢。** 它按 320×240 逐像素阻塞发送，共 76800 次 `HAL_SPI_Transmit`。如果 SPI 配置异常，可能停在这里。用调试器暂停，看 PC 是否停在 `NEUQ_LCD200_init` 或 `NEUQ_LCD200_Clear`。
 
-本工程还有一个可观察现象：`My_Lcd_init()` 在蓝牙串口初始化之前执行（[Car_Hardware.c:1017](../CODE/Car_Hardware.c#L1017)）。如果屏幕初始化卡死，后续 MPU6050 和蓝牙 UART 都不会初始化，表现为“整车没反应、蓝牙也连不上”。这可以作为初始化卡死的旁证。
+本工程还有一个可观察现象：`Lcd_init()` 在蓝牙串口初始化之前执行（[platform/Platform_Main.c:1017](../CODE/platform/Platform_Main.c#L1017)）。如果屏幕初始化卡死，后续 MPU6050 和蓝牙 UART 都不会初始化，表现为“整车没反应、蓝牙也连不上”。这可以作为初始化卡死的旁证。
 
 ### 4.2 SPI 时钟过高
 

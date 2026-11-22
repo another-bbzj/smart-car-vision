@@ -2,7 +2,7 @@
 
 适用：NEUQ_STM32F407VET6 双轮差速底盘，内环增量式速度 PID。
 
-相关代码：[Car_Config.h](../CODE/Car_Config.h)、[Car_Core.c](../CODE/Car_Core.c)、[Car_PID.c](../CODE/Car_PID.c)、[Car_Race.c](../CODE/Car_Race.c)。
+相关代码：[Board_Config.h](../CODE/Board_Config.h)、[task/Task_Fsm.c](../CODE/task/Task_Fsm.c)、[pid/Pid.c](../CODE/pid/Pid.c)、[track/Track_Fsm.c](../CODE/track/Track_Fsm.c)。
 配套文档：[蓝牙调试协议](Bluetooth_Car.md)、[速度控制升级](Speed_Control_Upgrade.md)、[PID 掉电保存](PID_Storage.md)。
 
 本页给出五件事：
@@ -17,7 +17,7 @@
 
 ## 1. 先算清楚：车速 ↔ 轮速 ↔ 编码器计数
 
-轮胎参数取自 [Car_Race.h](../CODE/Car_Race.h)：
+轮胎参数取自 [track/Track_Fsm.h](../CODE/track/Track_Fsm.h)：
 
 ```text
 RACE_RADIUS_M = 0.0325 m      /* 65 mm 直径，几何半径；比赛前用负载滚动周长复核 */
@@ -58,9 +58,9 @@ RACE_RADIUS_M = 0.0325 m      /* 65 mm 直径，几何半径；比赛前用负�
 
 | 项目 | 现在 | 5 m/s 需要 |
 |---|---|---|
-| `CAR_RPM_LIMIT` / `CAR_OVERSPEED_RPM` | 900 rpm | ≥1469 rpm，建议留 10% 余量（≥1600） |
+| `BOARD_RPM_LIMIT` / `CAR_OVERSPEED_RPM` | 900 rpm | ≥1469 rpm，建议留 10% 余量（≥1600） |
 | `CAR_ACCEL_LIMIT_RPM_S` | 200 rpm/s | 0→1469 rpm 现在要 7.3 s；按比赛起步时间重标，并核对电池/驱动电流 |
-| `Car_Race.c` 赛速上限 | 0.55 / 0.32 m/s | 任务层上限，和 PWM/RPM 限幅是两回事，需单独改并重做视觉预瞄、刹车距离和曲率限速 |
+| `track/Track_Fsm.c` 赛速上限 | 0.55 / 0.32 m/s | 任务层上限，和 PWM/RPM 限幅是两回事，需单独改并重做视觉预瞄、刹车距离和曲率限速 |
 | 曲率限速 `sqrt(0.55/|k|)` | 横向加速度 0.55 m/s² | 按抓地极限重标，否则高速进弯会直接冲出 |
 | 超速/堵转/方向保护 | 按 900 rpm 标定 | 按新转速复核，不能只抬上限 |
 | 编码器 | 440 counts/rev | 1469 rpm 时每 5 ms 约 54 计数、40 ms 窗口约 431 计数，分辨率足够 |
@@ -71,7 +71,7 @@ RACE_RADIUS_M = 0.0325 m      /* 65 mm 直径，几何半径；比赛前用负�
 
 ## 2. 测速分辨率与延迟
 
-编码器参数（[Car_Config.h](../CODE/Car_Config.h)）：
+编码器参数（[Board_Config.h](../CODE/Board_Config.h)）：
 
 - 电机轴每相每圈 11 个脉冲，TIM3/TIM4 四倍频，减速比 10:1；
 - 输出轴每圈 **440 个计数**（`CAR_ENCODER_CPR = 11 × 4 × 10`）。
@@ -109,7 +109,7 @@ Kp = 100 时一个计数直接跳 **2727 PWM**（约占 9000 限幅的 30%）。
 换来的量化噪声下降约 8 倍，对低速直行和稳态误差更有利。评估前馈或比较
 仿真与实车响应时，要把这 7 rpm 的预期跟随误差算进去，不要误判为增益不足。
 
-参数位置：`CAR_SPEED_WINDOW_TICKS`（窗口拍数）和 `CAR_SPEED_FILTER_TAU_S`
+参数位置：`TASK_WINDOW_TICKS`（窗口拍数）和 `CAR_SPEED_FILTER_TAU_S`
 （一阶低通时间常数）。左右轮共用同一套窗口长度和复位时机，`Car_Core` 在
 停车、故障、重新发车时同时清空两轮窗口。
 
@@ -132,7 +132,7 @@ u[k] = u[k-1] + Δu
 - Ki/Kd 仍按 5 ms 离散标定：`ΔI = Ki × e × dt / 0.005`，
   `D 项 = -Kd × 0.005 × d(measure)/dt`。
 
-默认增益为 **Kp = 8.0，Ki = 0.30，Kd = 0**（[Car_Config.h](../CODE/Car_Config.h)），
+默认增益为 **Kp = 8.0，Ki = 0.30，Kd = 0**（[Board_Config.h](../CODE/Board_Config.h)），
 网页调试台和 Python 上位机的默认值同步更新。
 
 > 注意：上电优先加载 Flash 里已保存的 PID。只改 `CAR_DEFAULT_*` 不会覆盖
@@ -312,7 +312,7 @@ PID 算法本身是对称的：主机测试断言相同输入下两轮测速和�
 1. **不要用 Kd。** 测速仍有 3.4 rpm 的台阶，微分会把台阶放大成尖峰。
 2. **遥测是 10 Hz。** 40 ms 窗口的残余抖动在 10 Hz 上会被混叠成无规律的
    慢抖，看着比实际严重。判断抖动优先看输出通道和电机声音。
-3. **窗口长度是延迟与分辨率的交换。** 把 `CAR_SPEED_WINDOW_TICKS`
+3. **窗口长度是延迟与分辨率的交换。** 把 `TASK_WINDOW_TICKS`
    从 8 临时改到 12–16 可以进一步改善低速，但测速延迟增加，Kp 必须相应下调；
    改完要重新按第 8 节确认。窗口不是越大越好。
 4. **前馈最后再加，且左右轮分开。** Ks 是静摩擦补偿（PWM），Kv 是 PWM/rpm，
@@ -329,11 +329,11 @@ PID 算法本身是对称的：主机测试断言相同输入下两轮测速和�
    相同参考进度、相同 Kp/Ki；只有静摩擦前馈 Ks 按轮标定（机械门槛本来
    就不同），稳态差仍由积分消除。不要给某一轮单独调 Kp 来抵消机械差异，
    那会把直线问题变成转弯问题。
-7. **改控制周期要复核窗口。** `CAR_SPEED_WINDOW_TICKS` 的单位是控制周期；
+7. **改控制周期要复核窗口。** `TASK_WINDOW_TICKS` 的单位是控制周期；
    如果以后把 `CAR_PERIOD_MS` 改离 5 ms，同一窗口对应的时间和分辨率都会变，
    需要重新计算并复核增益。
 8. **参数写入仅在 STOP 状态生效。** 运行中写 PID 会被拒绝（result=1）。
-9. **限幅与报错门槛是一套的。** `CAR_PWM_LIMIT`、`CAR_RPM_LIMIT`、
+9. **限幅与报错门槛是一套的。** `BOARD_PWM_LIMIT`、`BOARD_RPM_LIMIT`、
    `CAR_OVERSPEED_RPM` 都从 `CAR_PWM_MAX` / `CAR_RPM_MAX` /
    `CAR_LIMIT_FRACTION` 推导，改最高速前先按第 1 节算清楚。
 
@@ -345,7 +345,7 @@ PID 算法本身是对称的：主机测试断言相同输入下两轮测速和�
 |---|---|---|
 | 一给目标 PWM 就冲顶、随即报错 | 方向或编码器符号是否反了（第 4 节） | 只改一个开关；符号正确后再调 PID |
 | 一给目标就剧烈抖、声音像开关 | Kp 是否过大；一计数对应的 PWM 是否接近限幅 | 按第 7 节把 Kp 降到 ≤14，Kd 归零 |
-| 波形抖但车不抖 | 是否只看 10 Hz 遥测；测速窗口是否生效 | 看输出通道/听电机；确认 `CAR_SPEED_WINDOW_TICKS=8` |
+| 波形抖但车不抖 | 是否只看 10 Hz 遥测；测速窗口是否生效 | 看输出通道/听电机；确认 `TASK_WINDOW_TICKS=8` |
 | 稳态有 5–20 rpm 静差 | Ki 太小或积分上限被占满 | 适当加 Ki；确认未长时间饱和 |
 | 低速约 30 rpm 来回摆 | Kp 偏大、窗口偏短 | 降 Kp，或把窗口临时加到 12–16 后重调 |
 | 左右轮一快一慢、PWM 差很多 | 符号；增益是否一致；10 圈计数；机械阻力 | 先按第 4 节和第 8.1 节核对，不要用不同 Kp 修机械 |

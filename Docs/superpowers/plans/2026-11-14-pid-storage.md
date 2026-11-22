@@ -9,7 +9,7 @@
 - [x] Tests/test_car_menu.c：先验证第 4 个条目及操作；运行看到旧行为失败。
 - [x] CODE/Car_Params.[ch]、Tests/test_car_params.c：双区存储与 Flash 模型；校验空白、重启、六参数、无变化不写、损坏/断电/换区/无效值。
 - [x] CODE/Car_Menu.[ch]：保存入口、状态、按键防重复与停车约束。
-- [x] CODE/Car_ParamsFlash.[ch]、Car_Hardware.c：内部 Flash 适配及启动/保存接入；保留 PWM 零输出和新鲜数据要求。
+- [x] CODE/Car_ParamsFlash.[ch]、platform/Platform_Main.c：内部 Flash 适配及启动/保存接入；保留 PWM 零输出和新鲜数据要求。
 - [x] Keil 工程保留存储区并加入源码；测试脚本纳入新测试。
 - [x] 运行主机测试、Keil 全量编译，检查 HEX 最大地址；更新使用说明。
 

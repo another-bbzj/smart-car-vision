@@ -12,7 +12,7 @@ PE10 上，PE8 下，PE7 确认，PE9 返回。运行中 PE10 仍用于停车。
 
 | 显示 | 含义 |
 |---|---|
-| Using defaults / No saved parameters | 首次使用或没有有效记录，使用 Car_Config.h 编译默认值 |
+| Using defaults / No saved parameters | 首次使用或没有有效记录，使用 Board_Config.h 编译默认值 |
 | Loaded from Flash | 本次启动已恢复记录 |
 | Unsaved changes | 当前已生效 PID 与上一份保存值不同 |
 | Saving... keep power on | 正在写入，等待结果 |

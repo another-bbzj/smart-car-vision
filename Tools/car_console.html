@@ -72,6 +72,18 @@ main{display:grid;grid-template-columns:350px minmax(0,1fr);gap:20px;align-items
 .key.active{background:var(--accent);border-color:#1d54cb;color:#fff}
 .key.active span{color:#fff}
 .key.disabled{opacity:.5}
+/* 驾驶方式切换 + 虚拟摇杆 */
+.mode-switch{display:flex;gap:6px;margin:10px 0 2px}
+.mode-btn{flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font:600 12px var(--sans);cursor:pointer}
+.mode-btn.active{background:var(--accent);border-color:#1d54cb;color:#fff}
+.stick-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 22px;background:var(--panel2);border:1px solid #edf0f4;border-radius:12px;touch-action:none}
+.stick-wrap.disabled{opacity:.5}
+.stick-base{position:relative;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle at 50% 45%,#fff,#e8eef8);border:2px solid #cdd9ea;box-shadow:inset 0 4px 12px rgba(30,60,120,.10);touch-action:none}
+.stick-base::after{content:"";position:absolute;left:50%;top:50%;width:74px;height:2px;background:#dbe4f1;transform:translate(-50%,-50%)}
+.stick-base::before{content:"";position:absolute;left:50%;top:50%;width:2px;height:74px;background:#dbe4f1;transform:translate(-50%,-50%)}
+.stick-knob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:linear-gradient(180deg,#7fb0ff,#3b7bff);border:1px solid #2a63d8;box-shadow:0 4px 12px rgba(30,80,200,.35);touch-action:none;will-change:transform}
+.stick-knob:active{background:linear-gradient(180deg,#a8c8ff,#4f86ff)}
+[hidden]{display:none !important}
 .actions{display:flex;flex-direction:column;gap:9px}
 .safe{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--muted);line-height:1.7;cursor:pointer}
 .safe input{margin:3px 0 0;accent-color:var(--accent)}
@@ -249,17 +261,25 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
         <span class="pill off" id="statePill">等待回传</span>
         <span id="faultText">故障：--</span>
       </div>
+      <div class="mode-switch" role="group" aria-label="驾驶方式">
+        <button class="mode-btn active" data-mode="wasd" type="button">WASD 按键</button>
+        <button class="mode-btn" data-mode="stick" type="button">摇杆</button>
+      </div>
       <div class="speed-row">
         <label for="rpmRange">目标转速</label>
         <input type="range" id="rpmRange" min="20" max="900" step="5" value="60">
         <input type="number" id="rpmInput" min="20" max="900" step="5" value="60">
         <span>rpm</span>
       </div>
-      <div class="dpad">
+      <div class="dpad" id="dpad">
         <button class="key" data-key="w">W<span>前进</span></button>
         <button class="key" data-key="a">A<span>左转</span></button>
         <button class="key" data-key="s">S<span>后退</span></button>
         <button class="key" data-key="d">D<span>右转</span></button>
+      </div>
+      <div class="stick-wrap" id="stickWrap" hidden>
+        <div class="stick-base" id="stickBase"><div class="stick-knob" id="stickKnob"></div></div>
+        <p class="hint">拖动摇杆：上下前进/后退，左右转向；松手回中立即停车。</p>
       </div>
       <div class="actions">
         <button class="btn primary big" id="btnArm" disabled>使能（从零开始）</button>
@@ -532,6 +552,11 @@ const app = {
   lastRx: 0,
   lastSample: null,
   keys: new Set(),
+  mode: 'wasd',
+  stick: {x: 0, y: 0, active: false},
+  stickSent: {l: null, r: null, t: 0},
+  stickPending: null,
+  stickTimer: 0,
   rpm: 60,
   rxBytes: 0,
   txCount: 0,
@@ -964,6 +989,11 @@ function updateDriveButtons() {
     b.classList.toggle('disabled', !app.armed);
     b.classList.toggle('active', app.keys.has(b.dataset.key));
   });
+  const wrap = document.getElementById('stickWrap');
+  if (wrap) {
+    wrap.classList.toggle('disabled', !app.armed);
+    if (wrap.style) wrap.style.pointerEvents = app.armed ? '' : 'none';
+  }
 }
 
 function resetTelemetryUi() {
@@ -991,6 +1021,12 @@ function clampRpm(value) {
 
 function drive() {
   if (!app.armed) return;
+  if (app.mode === 'stick') driveFromStick();
+  else driveFromKeys();
+}
+
+/* WASD 按键/按钮：二值输入，松手即停。 */
+function driveFromKeys() {
   const rpm = clampRpm(app.rpm);
   const forward = (app.keys.has('w') ? 1 : 0) - (app.keys.has('s') ? 1 : 0);
   const turnLeft = (app.keys.has('a') ? 1 : 0) - (app.keys.has('d') ? 1 : 0);
@@ -1001,6 +1037,74 @@ function drive() {
   left = Math.round(left * rpm / scale);
   right = Math.round(right * rpm / scale);
   send(wheelsFrame(left, right));
+}
+
+/* 摇杆：连续量输入，X 转向、Y 前进，死区 8%，内轮不反转。 */
+function driveFromStick() {
+  const rpm = clampRpm(app.rpm);
+  const dz = 0.08;
+  let fwd = app.stick.y;
+  let turnX = app.stick.x;
+  if (Math.abs(fwd) < dz) fwd = 0;
+  if (Math.abs(turnX) < dz) turnX = 0;
+  const turn = turnX * (Math.abs(fwd) > 0.05 ? 0.6 : 1);
+  let left = fwd - turn;
+  let right = fwd + turn;
+  const scale = Math.max(1, Math.abs(left), Math.abs(right));
+  left = Math.round(left * rpm / scale);
+  right = Math.round(right * rpm / scale);
+  sendStick(left, right, false);
+}
+
+/* 摇杆发送节流：20 ms 一帧，变化不足 1 rpm 不发；被节流的最新值补发一次。 */
+const STICK_TX_MS = 20;
+function sendStick(left, right, force) {
+  const now = performance.now();
+  const due = app.stickSent.t + STICK_TX_MS;
+  if (!force && now < due) {
+    app.stickPending = {left, right};
+    if (!app.stickTimer) {
+      app.stickTimer = setTimeout(() => {
+        app.stickTimer = 0;
+        const pending = app.stickPending;
+        app.stickPending = null;
+        if (pending) sendStick(pending.left, pending.right, true);
+      }, due - now);
+    }
+    return;
+  }
+  if (!force && left === app.stickSent.l && right === app.stickSent.r) return;
+  app.stickSent.l = left;
+  app.stickSent.r = right;
+  app.stickSent.t = now;
+  send(wheelsFrame(left, right));
+}
+
+function resetStick(sendIdle) {
+  app.stick.x = 0;
+  app.stick.y = 0;
+  app.stick.active = false;
+  const knob = document.getElementById('stickKnob');
+  if (knob && knob.style) knob.style.transform = 'translate(0px,0px)';
+  if (sendIdle && app.armed) sendStick(0, 0, true);
+}
+
+function setDriveMode(mode) {
+  if (mode !== 'stick' && mode !== 'wasd') return;
+  if (mode === app.mode) return;
+  app.mode = mode;
+  app.keys.clear();
+  updateDriveButtons();
+  resetStick(false);
+  const dpad = document.getElementById('dpad');
+  const wrap = document.getElementById('stickWrap');
+  if (dpad) dpad.hidden = mode !== 'wasd';
+  if (wrap) wrap.hidden = mode !== 'stick';
+  document.querySelectorAll('[data-mode]').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  /* 切换输入源时先发一帧 0/0，避免上一种输入的残留速度。 */
+  if (app.armed) sendStick(0, 0, true);
 }
 
 function pressKey(key, pressed) {
@@ -1062,6 +1166,11 @@ function stop() {
   app.armed = false;
   app.pendingArm = false;
   app.keys.clear();
+  app.stick.active = false;
+  app.stick.x = 0;
+  app.stick.y = 0;
+  app.stickPending = null;
+  app.stickSent.l = null;
   app.stopRetries = 0;
   clearTimeout(app.stopTimer);
   updateDriveButtons();
@@ -1744,6 +1853,49 @@ for (const wheel of [0, 1]) {
 }
 selectPidTab('inner');
 
+/* 模式按钮：WASD 与摇杆互斥，默认 WASD。 */
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => setDriveMode(btn.dataset.mode));
+});
+
+/* 虚拟摇杆：按下捕获指针，拖动更新向量，松手回中并立即发 0/0。 */
+const stickBase = document.getElementById('stickBase');
+if (stickBase) {
+  const stickUpdate = event => {
+    const rect = stickBase.getBoundingClientRect();
+    let dx = (event.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+    let dy = ((rect.top + rect.height / 2) - event.clientY) / (rect.height / 2);
+    const len = Math.hypot(dx, dy);
+    if (len > 1) { dx /= len; dy /= len; }
+    app.stick.x = dx;
+    app.stick.y = dy;
+    const knob = document.getElementById('stickKnob');
+    if (knob && knob.style) knob.style.transform = 'translate(' + (dx * 46).toFixed(1) + 'px,' + (-dy * 46).toFixed(1) + 'px)';
+    drive();
+  };
+  stickBase.addEventListener('pointerdown', event => {
+    event.preventDefault();
+    if (!app.armed) {
+      if (app.connected && app.lastSample && Math.round(app.lastSample[0]) === 0) log('请先点击「使能」再驾驶', 'warn');
+      return;
+    }
+    try { stickBase.setPointerCapture(event.pointerId); } catch (_) {}
+    app.stick.active = true;
+    stickUpdate(event);
+  });
+  stickBase.addEventListener('pointermove', event => {
+    if (!app.stick.active) return;
+    event.preventDefault();
+    stickUpdate(event);
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(name => {
+    stickBase.addEventListener(name, () => {
+      if (!app.stick.active) return;
+      resetStick(true);
+    });
+  });
+}
+
 document.querySelectorAll('[data-key]').forEach(btn => {
   const key = btn.dataset.key;
   const down = e => {
@@ -1784,6 +1936,8 @@ document.addEventListener('keydown', event => {
   const key = keyName(event);
   if (key) {
     event.preventDefault();
+    /* 摇杆模式下键盘不参与驾驶，避免两个输入源互相覆盖。 */
+    if (app.mode === 'stick') return;
     if (!event.repeat) pressKey(key, true);
   }
 });

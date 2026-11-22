@@ -1,8 +1,8 @@
 #include <assert.h>
 #include "NEUQ_Delay.h"
 #include "NEUQ_Interrupts.h"
-#include "Car_Config.h"
-#include "Car_Hardware.h"
+#include "Board_Config.h"
+#include "Platform_Main.h"
 
 TestCoreDebug test_debug;
 uint32_t SystemCoreClock = 1000000u;
@@ -49,7 +49,7 @@ int main(void)
     TS_UART_2_RX_CALLBACK(0xc3);
     TS_UART_3_RX_CALLBACK(0xd4);
     assert(bt_count == 1u && bt_byte == 0xa1);
-    assert(vision_count == CAR_VISION_ENABLE);
+    assert(vision_count == BOARD_VISION_ENABLE);
     assert(!vision_count || vision_byte == 0xc3);
     return 0;
 }

@@ -20,44 +20,59 @@ try {
         $tried = if ($keilCandidates) { " Tried: $($keilCandidates -join ', ')" } else { '' }
         throw "Keil executable missing: '$Keil'.$tried Pass -Keil <path-to-UV4.exe> to override."
     }
+
+    # 代码目录按功能分类，头文件按文件名互相引用，因此每个子目录都要加进 -I。
+    $inc = '-I Tests/stubs -I CODE -I CODE/menu -I CODE/driver -I CODE/protocol ' +
+           '-I CODE/pid -I CODE/sudoku -I CODE/task -I CODE/track -I CODE/platform'
+
     python -m unittest discover -s Tests -p 'test_*.py' -v
     if ($LASTEXITCODE -ne 0) { throw 'Python tests failed' }
     node --test Tests/test_car_console.cjs
     if ($LASTEXITCODE -ne 0) { throw 'Console tests failed' }
+
     foreach ($visionEnabled in 0, 1) {
-        clang -std=c99 -Wall -Wextra -Werror "-DCAR_VISION_ENABLE=$visionEnabled" -I Tests/stubs -I CODE -I User -I Library/NEUQ_lib/NEUQ_lib_Driver Tests/test_car_startup.c Library/NEUQ_lib/NEUQ_lib_Driver/NEUQ_Delay.c User/NEUQ_Interrupts.c -o build/test_car_startup.exe
+        clang -std=c99 -Wall -Wextra -Werror "-DBOARD_VISION_ENABLE=$visionEnabled" $inc -I User -I Library/NEUQ_lib/NEUQ_lib_Driver Tests/test_car_startup.c Library/NEUQ_lib/NEUQ_lib_Driver/NEUQ_Delay.c User/NEUQ_Interrupts.c -o build/test_car_startup.exe
         if ($LASTEXITCODE -ne 0) { throw 'Startup test compilation failed' }
         & (Join-Path $carOutput 'test_car_startup.exe')
         if ($LASTEXITCODE -ne 0) { throw "Cold start / UART routing failed (vision=$visionEnabled)" }
     }
-    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_core.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_core.exe
+
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_core.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_core.exe
     if ($LASTEXITCODE -ne 0) { throw 'Core test compilation failed' }
     & (Join-Path $carOutput 'test_car_core.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
-    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_pid.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_pid.exe
-    if ($LASTEXITCODE -ne 0) { throw 'PID/reference test compilation failed' }
+
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_pid.c CODE/pid/Pid.c -o build/test_car_pid.exe
+    if ($LASTEXITCODE -ne 0) { throw 'PID test compilation failed' }
     & (Join-Path $carOutput 'test_car_pid.exe')
-    if ($LASTEXITCODE -ne 0) { throw 'PID/reference tests failed' }
-    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_vision.c CODE/Car_Vision.c -o build/test_car_vision.exe
+    if ($LASTEXITCODE -ne 0) { throw 'PID tests failed' }
+
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_vision.c CODE/protocol/Proto_Vision.c -o build/test_car_vision.exe
     if ($LASTEXITCODE -ne 0) { throw 'Vision test compilation failed' }
     & (Join-Path $carOutput 'test_car_vision.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Vision tests failed' }
-    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_menu.c CODE/Car_Menu.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_menu.exe
+
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_menu.c CODE/menu/Menu_Task.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_menu.exe
     if ($LASTEXITCODE -ne 0) { throw 'Menu test compilation failed' }
     & (Join-Path $carOutput 'test_car_menu.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Menu tests failed' }
-    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_params.c CODE/Car_Params.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_params.exe
+
+    # 参数存储测试只编译记录编解码，不编译片内 Flash 读写（那部分要 HAL_FLASH）。
+    clang -std=c99 -Wall -Wextra -Werror $inc '-DPID_STORAGE_WITH_FLASH=0' Tests/test_car_params.c CODE/pid/Pid_Storage.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_params.exe
     if ($LASTEXITCODE -ne 0) { throw 'PID storage compilation failed' }
     & (Join-Path $carOutput 'test_car_params.exe')
     if ($LASTEXITCODE -ne 0) { throw 'PID storage tests failed' }
-    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_sudoku.c CODE/Car_Sudoku.c -o build/test_car_sudoku.exe
+
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_sudoku.c CODE/sudoku/Sudoku.c -o build/test_car_sudoku.exe
     if ($LASTEXITCODE -ne 0) { throw 'Sudoku test compilation failed' }
     & (Join-Path $carOutput 'test_car_sudoku.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Sudoku tests failed' }
-    clang -std=c99 -Wall -Wextra -Werror -I CODE Tests/test_car_race.c CODE/Car_Race.c CODE/Car_Sudoku.c CODE/Car_Core.c CODE/Car_PID.c CODE/Car_Reference.c -o build/test_car_race.exe
+
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_race.c CODE/track/Track_Fsm.c CODE/sudoku/Sudoku.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_race.exe
     if ($LASTEXITCODE -ne 0) { throw 'Race test compilation failed' }
     & (Join-Path $carOutput 'test_car_race.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Race tests failed' }
+
     $carProject = Join-Path $carRoot 'MDK-ARM/NEUQ_STM32F407VET6_Opensource_Library.uvprojx'
     $carLog = Join-Path $carOutput 'keil_car.log'
     if (!(Test-Path -LiteralPath $Keil)) { throw "Keil executable missing: $Keil" }

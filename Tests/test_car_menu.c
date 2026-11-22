@@ -1,32 +1,34 @@
-#include "Car_Menu.h"
-#include "My_Lcd.h"
+#include "Menu_Task.h"
+#include "Sudoku.h"
+#include "Proto_Bluetooth.h"
+#include "Drv_Lcd.h"
 #include <assert.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
-static char rows[UI_ROWS][UI_COLS+1];
-void My_Lcd_print(uint8_t row, UI_Style_Enum style, const char *fmt, ...)
+static char rows[LCD_ROWS][LCD_COLS+1];
+void Lcd_Print(uint8_t row, UI_Style_Enum style, const char *fmt, ...)
 {
     va_list args;
     (void)style;
-    assert(row < UI_ROWS);
+    assert(row < LCD_ROWS);
     va_start(args,fmt);
-    assert(vsnprintf(rows[row],sizeof rows[row],fmt,args) <= UI_COLS);
+    assert(vsnprintf(rows[row],sizeof rows[row],fmt,args) <= LCD_COLS);
     va_end(args);
 }
 
-static MenuAction press(CarMenu *m, Car_Core *c, unsigned key, StartCondition ready)
+static MenuAction press(MenuState *m, Car_Core *c, unsigned key, StartCondition ready)
 {
     Key_Event_Struct event = {(uint8_t)key,KEY_EVENT_PRESS};
-    return CarMenu_Key(m,event,c,ready);
+    return Menu_Key(m,event,c,ready);
 }
 
 int main(void)
 {
     Car_Core car;
-    CarMenu menu = {0};
+    MenuState menu = {0};
     CarVisionObservation road = {0};
     MenuView view = {0};
     uint8_t board[36] = {0};
@@ -42,7 +44,7 @@ int main(void)
     assert(menu.depth == 2);
     {
         Key_Event_Struct repeat = {KEY_OK,KEY_EVENT_REPEAT};
-        assert(CarMenu_Key(&menu,repeat,&car,START_READY)==MENU_IDLE);
+        assert(Menu_Key(&menu,repeat,&car,START_READY)==MENU_IDLE);
     }
     car.speed[0]=3;
     assert(press(&menu,&car,KEY_OK,START_READY)==MENU_IDLE);
@@ -58,28 +60,28 @@ int main(void)
     road.session = 12;
     road.valid_mask = VISION_CURVATURE_VALID;
     road.confidence = 0.9f;
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_READY);
-    assert(CarMenu_StartCondition(&car,0,0,&road,11) == START_MOVING);
-    assert(CarMenu_StartCondition(&car,1,1,&road,11) == START_RESULT);
-    assert(CarMenu_StartCondition(&car,1,0,NULL,11) == START_NO_ROAD);
+    assert(Menu_StartCondition(&car,1,0,&road,11) == START_READY);
+    assert(Menu_StartCondition(&car,0,0,&road,11) == START_MOVING);
+    assert(Menu_StartCondition(&car,1,1,&road,11) == START_RESULT);
+    assert(Menu_StartCondition(&car,1,0,NULL,11) == START_NO_ROAD);
     road.confidence = NAN;
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_NO_ROAD);
+    assert(Menu_StartCondition(&car,1,0,&road,11) == START_NO_ROAD);
     road.confidence = 0.9f;
-    assert(CarMenu_StartCondition(&car,1,0,&road,12) == START_NEW_SESSION);
+    assert(Menu_StartCondition(&car,1,0,&road,12) == START_NEW_SESSION);
 
     /* Entering either menu level must never start a motor. Long OK cannot launch. */
     assert(press(&menu,&car,KEY_OK,START_READY) == MENU_IDLE && menu.depth == 1);
     assert(press(&menu,&car,KEY_OK,START_READY) == MENU_IDLE && menu.depth == 2);
     {
         Key_Event_Struct repeat = {KEY_OK,KEY_EVENT_REPEAT};
-        assert(CarMenu_Key(&menu,repeat,&car,START_READY) == MENU_IDLE);
+        assert(Menu_Key(&menu,repeat,&car,START_READY) == MENU_IDLE);
     }
     assert(press(&menu,&car,KEY_OK,START_NO_ROAD) == MENU_IDLE && car.state == CAR_STOP);
     assert(press(&menu,&car,KEY_OK,START_READY) == MENU_LAUNCH);
     assert(menu.item[MENU_RACE] == 1);
     assert(press(&menu,&car,KEY_OK,START_READY) == MENU_IDLE);
     assert(Car_StartRace(&car));
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_STOP_FIRST);
+    assert(Menu_StartCondition(&car,1,0,&road,11) == START_STOP_FIRST);
     Car_LocalStop(&car);
 
     memset(&menu,0,sizeof menu);
@@ -112,7 +114,7 @@ int main(void)
     assert(Car_SetPid(&car,2,1,1,1) == 2);
     assert(Car_SetPid(&car,0,NAN,1,1) == 2);
     assert(car.pid_speed[0].kp == before);
-    CarMenu_ShowResult(&menu);
+    Menu_ShowResult(&menu);
     assert(menu.depth == 2 && menu.group == MENU_RACE && menu.item[MENU_RACE] == 2);
 
     /* Render every detail page through the actual formatter and fixed row width. */
@@ -123,38 +125,38 @@ int main(void)
         view.menu.group = (uint8_t)group;
         for (item=0; item<(group>=MENU_LEFT_PID?4U:3U); ++item) {
             view.menu.item[group] = (uint8_t)item;
-            for (row=0; row<UI_ROWS; ++row) CarMenu_DrawRow(&view,row,board,2);
+            for (row=0; row<LCD_ROWS; ++row) Menu_DrawRow(&view,row,board,2);
         }
     }
     view.menu.group=MENU_RIGHT_PID;
     view.menu.item[MENU_RIGHT_PID]=3;
     for(item=PARAMS_DEFAULTS;item<=PARAMS_STOP_FIRST;item++) {
         view.menu.params_status=(CarParamsStatus)item;
-        for(row=0;row<UI_ROWS;row++) CarMenu_DrawRow(&view,row,board,0);
+        for(row=0;row<LCD_ROWS;row++) Menu_DrawRow(&view,row,board,0);
     }
     view.menu.params_status=PARAMS_SAVED;
     view.params_saved=1; view.params_dirty=1;
-    CarMenu_DrawRow(&view,4,board,0);
+    Menu_DrawRow(&view,4,board,0);
     assert(strstr(rows[4],"Unsaved"));
     view.start=START_RESULT;
-    CarMenu_DrawRow(&view,5,board,0);
+    Menu_DrawRow(&view,5,board,0);
     assert(strstr(rows[5],"Wait for result"));
     view.start=START_READY;
     view.menu.group = MENU_SENSORS;
     view.menu.item[MENU_SENSORS] = 1;
     view.gyro_ok = 0;
-    CarMenu_DrawRow(&view,5,board,0);
+    Menu_DrawRow(&view,5,board,0);
     assert(!rows[5][0]); /* stale gyro values are hidden */
     view.menu.group = MENU_RACE;
     view.menu.item[MENU_RACE] = 2;
     view.tile_mask = 5;
-    CarMenu_DrawRow(&view,2,board,SUDOKU_AMBIGUOUS);
+    Menu_DrawRow(&view,2,board,SUDOKU_AMBIGUOUS);
     assert(strstr(rows[2],"Multiple"));
-    CarMenu_DrawRow(&view,3,board,SUDOKU_MISSING);
+    Menu_DrawRow(&view,3,board,SUDOKU_MISSING);
     assert(strstr(rows[3],"received"));
-    CarMenu_DrawRow(&view,4,board,SUDOKU_MISSING);
+    Menu_DrawRow(&view,4,board,SUDOKU_MISSING);
     assert(strstr(rows[4],"missing"));
-    CarMenu_DrawRow(&view,2,board,SUDOKU_INVALID);
+    Menu_DrawRow(&view,2,board,SUDOKU_INVALID);
     assert(strstr(rows[2],"Conflicting"));
     puts("PASS three-level menu, launch gates, PID transaction, cancellation and rendering");
     return 0;

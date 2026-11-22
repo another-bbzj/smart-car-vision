@@ -46,7 +46,7 @@
  *     视觉串口接收中断 -> Car_Vision_UART_RX_Handler()（只入 FIFO）
  *     外部中断         -> 本车暂未使用，保留空回调
  *
- * 串口编号由 Car_Config.h 的 CAR_UART_INDEX / CAR_VISION_UART_INDEX 决定：
+ * 串口编号由 Board_Config.h 的 BOARD_UART_BT_INDEX / BOARD_UART_VIS_INDEX 决定：
  *   - 蓝牙使用 USART1（NEUQ 库索引 0）；
  *   - 视觉使用 USART3（NEUQ 库索引 2）；
  *   - 其余串口接收回调留空，避免未配置的串口误入控制逻辑。
@@ -68,8 +68,9 @@
  */
 
 #include "NEUQ_Interrupts.h"
-#include "Car_Hardware.h"
-#include "Car_Config.h"
+#include "Platform_Main.h"
+#include "Drv_Uart.h"
+#include "Board_Config.h"
 
 /* ========================================================================== */
 /*                              周期中断分发                                   */
@@ -121,7 +122,7 @@ void TS_UART_1_RX_CALLBACK(uint8_t dat)
 
 void TS_UART_2_RX_CALLBACK(uint8_t dat)
 {
-#if CAR_VISION_ENABLE
+#if BOARD_VISION_ENABLE
     Car_Vision_UART_RX_Handler(dat);
 #else
     (void)dat;

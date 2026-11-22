@@ -42,7 +42,7 @@
  *
  * 调用关系：
  *     User_Main()
- *         -> Car_Main()（Car_Hardware.c）
+ *         -> Car_Main()（Platform_Main.c）
  *              -> 初始化控制对象、PWM、编码器、串口和 PIT
  *              -> 启动周期中断
  *              -> 主循环发送 VOFA+ 遥测，正常不会返回。
@@ -59,7 +59,7 @@
  * ============================================================================
  */
 
-#include "Car_Hardware.h"
+#include "Platform_Main.h"
 
 /*
  * 函数名称：User_Main

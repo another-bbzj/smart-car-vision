@@ -16,7 +16,7 @@
 | 当前验证 | 主机软件测试及 Keil 编译通过；尚未完成本次版本的实车烧录、实际 Flash 断电与赛道验收 |
 | 正式赛题缺口 | 真正停车点、现场软件盲盒未接入；目前按两圈累计里程作练习终点 |
 
-**只检出上述基线提交不含最新 PID 保存功能。** 接手时使用包含本文和 `Car_Params.c` 的版本，可用 `git log -1 -- Docs/Control_Development_Handover.md` 查询本交接文档对应的提交。不要只拷贝 `Car_Menu.c`，否则可能漏掉 Flash 代码和链接区配置。
+**只检出上述基线提交不含最新 PID 保存功能。** 接手时使用包含本文和 `Pid_Storage.c` 的版本，可用 `git log -1 -- Docs/Control_Development_Handover.md` 查询本交接文档对应的提交。不要只拷贝 `Menu_Task.c`，否则可能漏掉 Flash 代码和链接区配置。
 
 最新已核对的固件：
 
@@ -33,7 +33,7 @@ SHA256: A4090473B087C02703805853C36AC6FF07263C7D5B581BD4B50E3C32BFDEFB96
 1. 阅读本文第 3–5 节，找到入口、执行上下文和硬件资源；不要从旧单电机任务入口接入。
 2. 先跑第 12 节的软件验证，记录本机可复现结果，再修改自己负责的模块。
 3. 确认当前车辆使用的是手动还是自主模式，以及要改的是速度内环、任务层还是视觉观测；这三者入口不同。
-4. 修改前与其他人员约定文件边界，尤其是 `Car_Hardware.c`、`Car_Config.h`、`Car_Race.h`、Keil 工程文件。
+4. 修改前与其他人员约定文件边界，尤其是 `Platform_Main.c`、`Board_Config.h`、`Task_Fsm.h`、Keil 工程文件。
 5. 提交或交接时同时给出源码版本、参数、测试命令、结果和未验证事项。首次联调按第 13 节保存记录。
 
 ## 3. 代码地图与建议分工
@@ -43,25 +43,24 @@ SHA256: A4090473B087C02703805853C36AC6FF07263C7D5B581BD4B50E3C32BFDEFB96
 | 文件/目录 | 实际职责 | 常见修改归属 |
 |---|---|---|
 | `Library/HAL_lib/Core/Src/main.c` | HAL/时钟初始化后调用 `User_Main()` | 启动与平台维护 |
-| `User/NEUQ_Main.c` | 应用入口，仅调用 `Car_Main()` | 平台维护 |
+| `User/NEUQ_Main.c` | 应用入口，调用 `Platform_Main()` | 平台维护 |
 | `User/NEUQ_Interrupts.c` | PIT、串口回调转发 | 平台维护，修改前协调 |
-| `CODE/Car_Hardware.c/.h` | 外设初始化、控制节拍、FIFO、运动输出、前台任务和共享快照 | 硬件/集成人员；保持一个主维护人 |
-| `CODE/Car_Config.h` | 引脚、周期、CPR、速度/PWM限幅、PID 默认值和保护阈值 | 全组共同确认配置 |
-| `CODE/Car_Core.c/.h` | 整车状态、蓝牙解析、轮速反馈、参考值推进、PID 和保护 | 底盘控制人员 |
-| `CODE/Car_PID.c/.h` | 位置式与增量式 PID 纯算法；内环速度环调用增量式，外环位置环调用位置式（默认关闭） | 速度环人员 |
-| `CODE/Car_Reference.c/.h` | 手动模式双轮共享进度的五次参考曲线 | 速度环人员 |
-| `CODE/Car_Race.c/.h` | 曲率到双轮目标、里程/航向、断路、绕黄障、红障停等、练习终点 | 任务控制人员 |
-| `CODE/Car_Vision.c/.h` | 视觉字节协议、校验、会话/序号、观测与四块缓存 | 通信人员，与视觉侧共同维护契约 |
-| `CODE/Car_Sudoku.c` | 四块拼接、6×6 数独唯一解检查；接口声明在 `Car_Race.h` | 任务/算法人员 |
-| `CODE/Car_Menu.c/.h` | 三级导航、调参候选值、发车/保存动作请求、逐行格式化 | 交互人员 |
-| `CODE/My_Key.c/.h`、`My_Lcd.c/.h` | 按键消抖与事件；LCD 缓存和逐字符刷新 | 交互/驱动人员 |
-| `CODE/My_Vofa.c/.h` | 遥测整帧入队，前台分次发送 | 通信人员 |
-| `CODE/Car_Params.c/.h` | PID 记录格式、CRC、日志查找、保存/恢复；不依赖 HAL | 参数存储人员 |
-| `CODE/Car_ParamsFlash.c/.h` | 内部 Flash 扇区读写、擦除和缓存处理 | 参数存储/平台人员 |
+| `CODE/platform/Platform_Main.c/.h` | 平台入口：外设初始化、控制节拍、FIFO、运动输出、前台任务和共享快照 | 硬件/集成人员；保持一个主维护人 |
+| `CODE/Board_Config.h` | 引脚、周期、CPR、速度/PWM限幅、PID 默认值和保护阈值 | 全组共同确认配置 |
+| `CODE/menu/Menu_Task.c/.h` | 三级导航、调参候选值、发车/保存动作请求、逐行格式化 | 交互人员 |
+| `CODE/driver/Drv_Motor.c/.h`、`Drv_Encoder.c/.h`、`Drv_Key.c/.h`、`Drv_Lcd.c/.h`、`Drv_Gyro.c/.h`、`Drv_Clock.c/.h`、`Drv_Uart.c/.h` | 电机 PWM/方向、编码器计数、按键消抖、LCD 缓存刷新、MPU6050、微秒时基和串口收发 | 交互/驱动人员 |
+| `CODE/protocol/Proto_Bluetooth.c/.h` | 蓝牙帧解析、轮速命令接入与应答 | 通信人员，与底盘控制共同维护契约 |
+| `CODE/protocol/Proto_Vision.c/.h` | 视觉字节协议、校验、会话/序号、观测与四块缓存 | 通信人员，与视觉侧共同维护契约 |
+| `CODE/protocol/Proto_Vofa.c/.h` | 遥测整帧入队，前台分次发送 | 通信人员 |
+| `CODE/pid/Pid.c/.h` | 位置式与增量式 PID 纯算法；内环速度环调用增量式，外环位置环调用位置式（默认关闭） | 速度环人员 |
+| `CODE/pid/Pid_Storage.c/.h` | PID 记录格式、CRC、日志查找、保存/恢复，内部 Flash 扇区读写、擦除和缓存处理 | 参数存储/平台人员 |
+| `CODE/sudoku/Sudoku.c/.h` | 四块拼接、6×6 数独唯一解检查 | 任务/算法人员 |
+| `CODE/task/Task_Fsm.c/.h` | 整车状态、曲率到双轮目标、里程/航向、断路、绕黄障、红障停等、练习终点 | 任务控制人员 |
+| `CODE/track/Track_Fsm.c/.h` | 巡线状态机、手动模式双轮共享进度的五次参考曲线 | 速度环/巡线人员 |
 | `Tools/`、`Tests/` | 电脑调试台、协议参考、编译脚本、回归测试 | 修改对应功能的人同步维护 |
 | `vision_inspection/vision/` | 香橙派视觉程序 | 图像人员；控制侧变更协议时同步联调 |
 
-推荐阅读顺序：`Car_Config.h → Car_Core.h → Car_Hardware.c → Car_Race.h/.c → Car_Vision.h → Car_Menu.c → Car_Params.c`。
+推荐阅读顺序：`Board_Config.h → platform/Platform_Main.h → task/Task_Fsm.h/.c → track/Track_Fsm.h → protocol/Proto_Vision.h → menu/Menu_Task.c → pid/Pid_Storage.c`。
 
 ## 4. 启动流程、调度与共享数据
 
@@ -97,10 +96,10 @@ flowchart TD
 
 ### 4.2 前台任务
 
-主循环顺序是 `poll_params() → My_Vofa_poll() → poll_gyro() → poll_menu()`。
+主循环顺序是 `poll_params() → Vofa_poll() → poll_gyro() → poll_menu()`。
 
 - Flash 保存与数独求解都放在前台。不要放进最高优先级 PIT。
-- `My_Vofa_poll()` 每次最多发 4 字节，避免持续阻塞 IMU/LCD 服务。
+- `Vofa_poll()` 每次最多发 4 字节，避免持续阻塞 IMU/LCD 服务。
 - IMU 两次采样请求至少间隔 10 ms，是前台轮询，不保证严格 100 Hz。
 - LCD 每轮取一致快照，逐行绘制；新一轮快照间隔至少 120 ms，实际刷新还受串口和 I²C 耗时影响。
 - 数独求解在终点收尾完成、题面冻结后执行；搜索预算 20000 节点。
@@ -142,23 +141,23 @@ flowchart TD
 |---|---|---|
 | 编码器 | 11 PPR × 4 × 减速比 10 = 440 counts/rev | `CAR_ENCODER_CPR`，输出轴每转计数 |
 | 电机空载转速记录 | 1000 rpm | `CAR_MOTOR_NOLOAD_RPM`，转速满量程 |
-| 目标转速上限 | ±900 rpm（满量程的 90%） | `CAR_RPM_LIMIT` = `CAR_RPM_MAX × CAR_LIMIT_FRACTION` |
-| PWM 上限 | ±9000，满量程 10000（90%） | `CAR_PWM_LIMIT` = `CAR_PWM_MAX × CAR_LIMIT_FRACTION` |
+| 目标转速上限 | ±900 rpm（满量程的 90%） | `BOARD_RPM_LIMIT` = `CAR_RPM_MAX × CAR_LIMIT_FRACTION` |
+| PWM 上限 | ±9000，满量程 10000（90%） | `BOARD_PWM_LIMIT` = `CAR_PWM_MAX × CAR_LIMIT_FRACTION` |
 | 超速报错 | 实测 >900 rpm 持续 100 ms | `CAR_OVERSPEED_RPM`，故障码 8 |
-| 参考加速度/加加速度 | 200 rpm/s；800 rpm/s² | `Car_Config.h`；自主流式参考只有加速度限幅，不能声称同时保证 jerk |
-| 测速窗口 | 8 个控制周期（40 ms）计数滑动平均 | `CAR_SPEED_WINDOW_TICKS`；单计数约 3.4 rpm |
+| 参考加速度/加加速度 | 200 rpm/s；800 rpm/s² | `Board_Config.h`；自主流式参考只有加速度限幅，不能声称同时保证 jerk |
+| 测速窗口 | 8 个控制周期（40 ms）计数滑动平均 | `TASK_WINDOW_TICKS`；单计数约 3.4 rpm |
 | 速度反馈低通 | 0.015 s | `CAR_SPEED_FILTER_TAU_S`；叠加在窗口之后 |
-| 默认 PID | 两轮均 Kp=8.0，Ki=0.30，Kd=0 | `Car_Config.h`；有效保存记录优先于这些默认值，详见[调参指引](Speed_PID_Tuning_Guide.md) |
+| 默认 PID | 两轮均 Kp=8.0，Ki=0.30，Kd=0 | `Board_Config.h`；有效保存记录优先于这些默认值，详见[调参指引](Speed_PID_Tuning_Guide.md) |
 | 微分滤波/目标权重 | 0.020 s / 1.0 | `CAR_PID_D_TAU_S` / `CAR_PID_SETPOINT_WEIGHT` |
-| 前馈 | Ks/Kv/Ka 均为 0 | `Car_Config.h`，未做本车辨识 |
-| 轮半径/轮距 | 0.0325 m / 0.173 m | `Car_Race.h`，轮距为几何初值 |
+| 前馈 | Ks/Kv/Ka 均为 0 | `Board_Config.h`，未做本车辨识 |
+| 轮半径/轮距 | 0.0325 m / 0.173 m | `CODE/task/Task_Fsm.h`，轮距为几何初值 |
 | 圈长/练习终点 | 55.061 m / 110.122 m | `RACE_LAP_M` / `RACE_FINISH_M` |
 | 断路进入位置 | 0 | `RACE_GAP_ENTRY_M`；0 表示不使用固定沿程窗口，仍要求视觉候选及近期直行 |
 | 黄障绕行 | 左侧，目标偏移 0.18 m | `RACE_BYPASS_SIDE` / `RACE_BYPASS_OFFSET_M` |
 
 这些数值是代码基线，不等同于整车标定结果；当前没有要求重新开展实测，接手时保留“未验证”标记即可。
 
-坐标统一：轮 0 左、轮 1 右；前进轮速为正；车体向左/逆时针为正。运动学使用 m、s、rad；菜单角速度显示 °/s、航向显示 °。`Race_Step()` 的 `left_m/right_m` 是本周期位移增量，不是累计路程。
+坐标统一：轮 0 左、轮 1 右；前进轮速为正；车体向左/逆时针为正。运动学使用 m、s、rad；菜单角速度显示 °/s、航向显示 °。`Track_Step()` 的 `left_m/right_m` 是本周期位移增量，不是累计路程。
 
 ```text
 raw_rpm = Σ(最近 8 拍 encoder_delta) × 60 / (440 × Σ(最近 8 拍 dt_s))
@@ -194,7 +193,7 @@ D 项   = -Kd × 0.005 × d(measure)/dt
 
 微分对测量计算并低通，积分有抗饱和；可配置前馈但当前系数全零。零输出表示撤去驱动，并非机械抱死；换向时先零 PWM，下一次输出调用才改变方向。
 
-**自主模式中 `Car_Core.c` 会拒绝所有蓝牙命令，包括蓝牙 STOP。** 当前比赛停车入口是 PE10，不能把上位机停止按钮当作自主比赛的有效急停。若后续要增加遥控急停，需要显式修改控制权规则并补充回归测试。
+**自主模式中 `task/Task_Fsm.c` 会拒绝所有蓝牙命令，包括蓝牙 STOP。** 当前比赛停车入口是 PE10，不能把上位机停止按钮当作自主比赛的有效急停。若后续要增加遥控急停，需要显式修改控制权规则并补充回归测试。
 
 | 故障码 | 含义 | 定位重点 |
 |---|---|---|
@@ -254,7 +253,7 @@ Kp/Ki/Kd：单击步长 0.01，长按连发 0.10，范围 0–655.35；PE7 应�
 实现链：
 
 ```text
-CarMenu_Key → MENU_SAVE_PARAMS → params_pending
+Menu_Key → MENU_SAVE_PARAMS → params_pending
   → 主循环 poll_params → CarParams_FlashSave → CarParams_Save
 上电 Car_Init → CarParams_Load → CarParams_Apply
 ```
@@ -263,7 +262,7 @@ Flash 保存限定 STOP、两轮低于 2 rpm、没有终点待处理；后台期
 
 存储采用两个 128 KiB 扇区的 64 字节追加记录，每区 2048 条，含版本、序号、六个 float、CRC32 和最后写入的提交标记。跨区擦除前保留最新有效记录所在区；损坏/半写记录跳过，没有有效记录则保留默认值。
 
-**修改 `CAR_DEFAULT_KP/KI/KD` 不会覆盖已有保存记录。** 需要改车上当前值时，通过菜单或蓝牙应用新值再保存。尚无“恢复出厂参数”菜单或蓝牙保存指令。
+**修改 `PID_DEFAULT_KP/KI/KD` 不会覆盖已有保存记录。** 需要改车上当前值时，通过菜单或蓝牙应用新值再保存。尚无“恢复出厂参数”菜单或蓝牙保存指令。
 
 当前 Keil 自动链接布局的 IROM 和 OCR_RVCT4 都限制在前 256 KiB；备用 `.sct` 也排除了 S6/S7。不得将代码区域扩回 512 KiB，否则可能在保存时擦掉程序。新增保存字段要同步调整记录版本、长度、CRC、兼容处理和断电测试。整片擦除会清掉参数；普通掉电/复位不会清除已确认保存的记录。
 
@@ -317,7 +316,7 @@ VERSION=1，多字节字段大端；CRC16-CCITT-FALSE：0x1021、初值 0xFFFF�
 - 道路有效期为发送端年龄加本地解析后年龄不超过 200 ms；字节间隔 50 ms 丢半帧。该期限不完整包含排队/线路延迟。
 - 道路快照返回成功仍可能 `valid_mask=0`；自主巡线需要曲率有效位，不能只凭“有新帧”继续巡线。
 - 块号 0/1/2/3 = 左上/右上/左下/右下；九格行优先、0 空白、1–6 数字，未知不是空白。数独块在当前会话保留，不套用道路的 200 ms 缓存寿命。
-- UART 错误仅使道路和半帧失效，保留已验证的数独块；`Car_Vision.h` 末尾个别旧注释与此不一致时，以 `CarVision_Invalidate()` 实现为准。
+- UART 错误仅使道路和半帧失效，保留已验证的数独块；`protocol/Proto_Vision.h` 末尾个别旧注释与此不一致时，以 `CarVision_Invalidate()` 实现为准。
 - v1 无 ACK，视觉帧不直接写电机；图像侧 Event/ACK 实验接口尚未成为双方线协议。
 
 道路载荷每个字段偏移、缩放与范围以 [视觉通信接口](Vision_Interface.md) 为准；扩展前必须与图像人员共同修改接收器、发送器、Python 编码器和测试，不要直接发送 C 结构体内存。
@@ -326,19 +325,19 @@ VERSION=1，多字节字段大端；CRC16-CCITT-FALSE：0x1021、初值 0xFFFF�
 
 | 想做的工作 | 修改起点 | 同步检查 |
 |---|---|---|
-| 换电机、改减速比/编码器 | `Car_Config.h` 的 CPR、符号及限幅 | 转速、里程、圈数、断路距离会一起受影响 |
-| 修改内环速度环增益/算法 | `Car_Config.h` 默认值或蓝牙命令 4；算法在 `Car_PID` | 测速窗口、dt、Ki/Kd 语义、复位、饱和、换向、左右轮一致性；先看[调参指引](Speed_PID_Tuning_Guide.md)，不能只增加新函数而不切调用 |
-| 改轮径/轮距/绕行方向 | `Car_Race.h` | 运动学单位、陀螺符号、双圈仿真 |
-| 增加赛项/盲盒 | `RacePhase`、`Race_Step()` | 明确进入/结束/超时/重复触发；同步菜单阶段名称数组和 `test_car_race.c` |
-| 接入真正终点 | `Race_Step()` 的完成条件及视觉契约 | 不能把任何 FINISH 候选直接当已确认终点；保持后续静止/收块/求解流程 |
-| 增加菜单页 | `Car_Menu.h/.c` | 分类和条目数量、索引、32字符行宽、返回/长按、状态门控与渲染测试 |
-| 增加掉电参数 | `Car_Params`、Flash适配、菜单状态 | 版本兼容、校验、默认值、断电回退、链接区及迁移策略 |
-| 增加传感器/遥测 | 前台采样、时间戳快照、`My_Vofa` | 不阻塞PIT；若改变16通道布局同步所有上位机解析 |
-| 改串口/引脚 | `Car_Config.h`、驱动、回调和硬件错误处理 | 当前编译约束固定蓝牙索引3、视觉索引2，仅改一个宏不构成完整迁移 |
+| 换电机、改减速比/编码器 | `Board_Config.h` 的 CPR、符号及限幅 | 转速、里程、圈数、断路距离会一起受影响 |
+| 修改内环速度环增益/算法 | `Board_Config.h` 默认值或蓝牙命令 4；算法在 `pid/Pid` | 测速窗口、dt、Ki/Kd 语义、复位、饱和、换向、左右轮一致性；先看[调参指引](Speed_PID_Tuning_Guide.md)，不能只增加新函数而不切调用 |
+| 改轮径/轮距/绕行方向 | `CODE/task/Task_Fsm.h` | 运动学单位、陀螺符号、双圈仿真 |
+| 增加赛项/盲盒 | `RacePhase`、`Track_Step()` | 明确进入/结束/超时/重复触发；同步菜单阶段名称数组和 `test_car_race.c` |
+| 接入真正终点 | `Track_Step()` 的完成条件及视觉契约 | 不能把任何 FINISH 候选直接当已确认终点；保持后续静止/收块/求解流程 |
+| 增加菜单页 | `menu/Menu_Task.h/.c` | 分类和条目数量、索引、32字符行宽、返回/长按、状态门控与渲染测试 |
+| 增加掉电参数 | `Pid_Storage`、Flash适配、菜单状态 | 版本兼容、校验、默认值、断电回退、链接区及迁移策略 |
+| 增加传感器/遥测 | 前台采样、时间戳快照、`Proto_Vofa` | 不阻塞PIT；若改变16通道布局同步所有上位机解析 |
+| 改串口/引脚 | `Board_Config.h`、驱动、回调和硬件错误处理 | 当前编译约束固定蓝牙索引3、视觉索引2，仅改一个宏不构成完整迁移 |
 
 新增 `.c` 必须加入 `MDK-ARM/*.uvprojx` 的文件组；主机测试脚本手写了源文件列表，也要同步。保留底层库版权与许可证声明。
 
-建议一个任务由一个人维护实现文件及其测试；跨模块接口先写清函数签名、单位、有效期、调用上下文，再分别实现。多人并行时避免同时整体替换 `Car_Hardware.c` 或 Keil XML；合入人负责检查集成点。
+建议一个任务由一个人维护实现文件及其测试；跨模块接口先写清函数签名、单位、有效期、调用上下文，再分别实现。多人并行时避免同时整体替换 `Platform_Main.c` 或 Keil XML；合入人负责检查集成点。
 
 ## 12. 编译、测试和已知证据
 

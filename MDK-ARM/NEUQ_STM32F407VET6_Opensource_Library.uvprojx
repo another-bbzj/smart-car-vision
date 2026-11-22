@@ -37,7 +37,7 @@
           <bCustSvd>0</bCustSvd>
           <UseEnv>0</UseEnv>
           <BinPath></BinPath>
-          <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE</IncludePath>
+          <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE;../CODE/menu;../CODE/driver;../CODE/protocol;../CODE/pid;../CODE/sudoku;../CODE/task;../CODE/track;../CODE/platform</IncludePath>
           <LibPath></LibPath>
           <RegisterFilePath></RegisterFilePath>
           <DBRegisterFilePath></DBRegisterFilePath>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE</IncludePath>
+              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE;../CODE/menu;../CODE/driver;../CODE/protocol;../CODE/pid;../CODE/sudoku;../CODE/task;../CODE/track;../CODE/platform</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -358,7 +358,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE</IncludePath>
+              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE;../CODE/menu;../CODE/driver;../CODE/protocol;../CODE/pid;../CODE/sudoku;../CODE/task;../CODE/track;../CODE/platform</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -1032,77 +1032,222 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>CODE_Bluetooth_Car</GroupName>
+          <GroupName>CODE</GroupName>
           <Files>
             <File>
-              <FileName>Car_Reference.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Reference.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_Vision.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Vision.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_Race.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Race.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_Sudoku.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Sudoku.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_PID.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_PID.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_Core.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Core.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_Hardware.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Hardware.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_Menu.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Menu.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_Params.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_Params.c</FilePath>
-            </File>
-            <File>
-              <FileName>Car_ParamsFlash.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/Car_ParamsFlash.c</FilePath>
-            </File>
-            <File>
-              <FileName>My_Key.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/My_Key.c</FilePath>
-            </File>
-            <File>
-              <FileName>My_Lcd.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../CODE/My_Lcd.c</FilePath>
+              <FileName>Board_Config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/Board_Config.h</FilePath>
             </File>
           </Files>
         </Group>
         <Group>
-          <GroupName>CODE_Common</GroupName>
+          <GroupName>CODE\menu</GroupName>
           <Files>
             <File>
-              <FileName>My_Vofa.c</FileName>
+              <FileName>Menu_Task.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/My_Vofa.c</FilePath>
+              <FilePath>../CODE/menu/Menu_Task.c</FilePath>
+            </File>
+            <File>
+              <FileName>Menu_Task.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/menu/Menu_Task.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>CODE\driver</GroupName>
+          <Files>
+            <File>
+              <FileName>Drv_Motor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/driver/Drv_Motor.c</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Motor.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/driver/Drv_Motor.h</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Encoder.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/driver/Drv_Encoder.c</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Encoder.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/driver/Drv_Encoder.h</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Key.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/driver/Drv_Key.c</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Key.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/driver/Drv_Key.h</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Lcd.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/driver/Drv_Lcd.c</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Lcd.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/driver/Drv_Lcd.h</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Gyro.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/driver/Drv_Gyro.c</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Gyro.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/driver/Drv_Gyro.h</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Clock.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/driver/Drv_Clock.c</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Clock.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/driver/Drv_Clock.h</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/driver/Drv_Uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>Drv_Uart.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/driver/Drv_Uart.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>CODE\protocol</GroupName>
+          <Files>
+            <File>
+              <FileName>Proto_Bluetooth.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/protocol/Proto_Bluetooth.c</FilePath>
+            </File>
+            <File>
+              <FileName>Proto_Bluetooth.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/protocol/Proto_Bluetooth.h</FilePath>
+            </File>
+            <File>
+              <FileName>Proto_Vision.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/protocol/Proto_Vision.c</FilePath>
+            </File>
+            <File>
+              <FileName>Proto_Vision.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/protocol/Proto_Vision.h</FilePath>
+            </File>
+            <File>
+              <FileName>Proto_Vofa.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/protocol/Proto_Vofa.c</FilePath>
+            </File>
+            <File>
+              <FileName>Proto_Vofa.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/protocol/Proto_Vofa.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>CODE\pid</GroupName>
+          <Files>
+            <File>
+              <FileName>Pid.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/pid/Pid.c</FilePath>
+            </File>
+            <File>
+              <FileName>Pid.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/pid/Pid.h</FilePath>
+            </File>
+            <File>
+              <FileName>Pid_Storage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/pid/Pid_Storage.c</FilePath>
+            </File>
+            <File>
+              <FileName>Pid_Storage.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/pid/Pid_Storage.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>CODE\sudoku</GroupName>
+          <Files>
+            <File>
+              <FileName>Sudoku.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/sudoku/Sudoku.c</FilePath>
+            </File>
+            <File>
+              <FileName>Sudoku.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/sudoku/Sudoku.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>CODE\task</GroupName>
+          <Files>
+            <File>
+              <FileName>Task_Fsm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/task/Task_Fsm.c</FilePath>
+            </File>
+            <File>
+              <FileName>Task_Fsm.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/task/Task_Fsm.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>CODE\track</GroupName>
+          <Files>
+            <File>
+              <FileName>Track_Fsm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/track/Track_Fsm.c</FilePath>
+            </File>
+            <File>
+              <FileName>Track_Fsm.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/track/Track_Fsm.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>CODE\platform</GroupName>
+          <Files>
+            <File>
+              <FileName>Platform_Main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../CODE/platform/Platform_Main.c</FilePath>
+            </File>
+            <File>
+              <FileName>Platform_Main.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>../CODE/platform/Platform_Main.h</FilePath>
             </File>
           </Files>
         </Group>

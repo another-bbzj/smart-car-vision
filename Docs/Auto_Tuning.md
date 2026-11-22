@@ -2,7 +2,7 @@
 
 适用：NEUQ_STM32F407VET6 双轮差速底盘，网页调试台的内环速度环自动调参。
 
-相关代码：[Car_Config.h](../CODE/Car_Config.h)、[Car_Core.c](../CODE/Car_Core.c)、[car_console.html](../Tools/car_console.html)。
+相关代码：[Board_Config.h](../CODE/Board_Config.h)、[task/Task_Fsm.c](../CODE/task/Task_Fsm.c)、[car_console.html](../Tools/car_console.html)。
 配套文档：[蓝牙调试协议](Bluetooth_Car.md)、[转速—PID 调参指引](Speed_PID_Tuning_Guide.md)、[速度控制升级](Speed_Control_Upgrade.md)。
 
 ---
@@ -38,12 +38,12 @@ C3 3C | 06 | 03 | wheel u8 | pwm int16 大端 | CRC8
 ```
 
 - `wheel`：0 左轮、1 右轮；一次只测试一轮。
-- `pwm`：带符号 PWM 数值，范围 `[-CAR_OPENLOOP_PWM_LIMIT, +CAR_OPENLOOP_PWM_LIMIT]`，
+- `pwm`：带符号 PWM 数值，范围 `[-BT_OPENLOOP_PWM_LIMIT, +BT_OPENLOOP_PWM_LIMIT]`，
   默认 3000（满量程 10000 的 30%）。
 - 只在 `RUN` 状态接受；首次进入还要求双轮目标为零且实测转速低于 10 rpm，
   防止行驶中直接切换；周期刷新不受此限制。
 - `STOP`、故障、轮速命令和超时都会撤去开环输出。
-- 上位机必须每 `CAR_OPENLOOP_TIMEOUT_MS`（默认 500 ms）内刷新，否则该轮自动回零。
+- 上位机必须每 `BT_OPENLOOP_TIMEOUT_MS`（默认 500 ms）内刷新，否则该轮自动回零。
 - 开环期间仍保留超速、堵转和方向保护；参考转速按 0 处理，堵转/方向条件改用开环标志。
 - 开环命令会清空规划器和另一轮的开环状态，并刷新通信看门狗。
 

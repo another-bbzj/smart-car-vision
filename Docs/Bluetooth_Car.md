@@ -8,7 +8,7 @@
 - 引脚依据：`22届校赛主板原理图参考 (1) (1).pdf`、`22届校赛驱动板原理图参考 (1).pdf`。
 - 核心板外围依据：`V2(1).pdf`，Flash CS 为 PB0；程序启动时将其置高，因为 PA5/6/7 已用于电机及编码器。
 - 蓝牙依据：`JDY-31-K1234.PDF`，经典蓝牙 SPP，默认串口9600、配对密码1234。支持 Windows/Android；本工具运行在 Windows 电脑上。
-- 工程仅运行当前双轮蓝牙程序；已移除单电机考核入口、旧协议和任务选择配置。硬件参数统一在 `CODE/Car_Config.h`。
+- 工程仅运行当前双轮蓝牙程序；已移除单电机考核入口、旧协议和任务选择配置。硬件参数统一在 `CODE/Board_Config.h`。
 
 ## 2. 接线
 
@@ -39,7 +39,7 @@ JDY-31 带底板版本 VCC 按手册接3.6–6V（建议5V），裸模块 VCC �
 ## 3. 编译与烧录
 
 1. 打开 `MDK-ARM/NEUQ_STM32F407VET6_Opensource_Library.uvprojx`，使用现有 ARM Compiler 5，Rebuild。
-2. 已在工程中加入 `Car_Core.c`、`Car_Hardware.c`，无需手动加文件。
+2. 已在工程中加入 `task/Task_Fsm.c`、`platform/Platform_Main.c`，无需手动加文件。
 3. 烧录输出：`MDK-ARM/NEUQ_STM32F407VET6_Opensource_Library/NEUQ_STM32F407VET6_Opensource_Library.hex`。也可以用 Keil Download 经 ST-Link/SWD 下载。
 4. 上电保持停车，必须收到合法使能，再收到轮速指令才运动。复位和掉电后不会恢复原来的运动。
 5. 验证独立启动时，断开调试器，整车完全断电后重新供电。保持车轮架空，确认 LCD 出现菜单，再通过蓝牙确认能连续收到停车遥测。这一步覆盖调试器可能提前使能 DWT 的情况。
@@ -85,7 +85,7 @@ python Tools/car_host.py --port COM8 --log car_run.csv
 
 ## 5. 第一次架空校准（左右轮分别测）
 
-`CODE/Car_Config.h` 集中保存首版配置。默认电机参数沿用旧台架：11线、四倍频、减速比10，输出轴每转440计数；新电机若不同，必须修改 `CAR_ENCODER_CPR`。
+`CODE/Board_Config.h` 集中保存首版配置。默认电机参数沿用旧台架：11线、四倍频、减速比10，输出轴每转440计数；新电机若不同，必须修改 `CAR_ENCODER_CPR`。
 
 用户已确认使用JGB37-520霍尔编码器电机、输出轴空载约1000rpm。440计数仍只是初始台架假设，并未因型号确认而成为实测值；需核对编码器PPR和减速比，或直接测量输出轴一圈计数。
 
@@ -110,7 +110,7 @@ python Tools/car_host.py --hex openloop 0 1500
 
 ## 6. 调参、保护与回传
 
-- 串级结构：外环位置式位置环 → 内环增量式速度环。外环由 `Car_Config.h` 的 `CAR_CASCADE_OUTER_ENABLE` 控制，默认 0（关闭），此时规划器参考转速直接送内环；蓝牙命令 4、网页调试台和板端 PID 菜单都只读写内环增益，外环暂不开放调参。
+- 串级结构：外环位置式位置环 → 内环增量式速度环。外环由 `Board_Config.h` 的 `CAR_CASCADE_OUTER_ENABLE` 控制，默认 0（关闭），此时规划器参考转速直接送内环；蓝牙命令 4、网页调试台和板端 PID 菜单都只读写内环增益，外环暂不开放调参。
 - 网页调试台的内环自动调参使用命令 6 做开环 PWM 阶跃，采集 100 ms 的 PWM/rpm 后拟合 FOPDT 并给出 CHR/IMC/AIMC 增益。它是对 mazj/PythonPID_Tuner 固定时间窗口的适配版，不是原工具直接运行；只在车轮架空、STOP 回传、两轮停稳（<10 rpm）后可用。原理、换算和安全边界见[内环自动调参](Auto_Tuning.md)。
 - 默认内环速度环：左右各自 `Kp=8.0, Ki=0.30, Kd=0`；上电优先加载已保存的 PID，没有有效保存值时才使用默认值。Ki/Kd保留5ms离散参数语义；控制器按实际dt归一化，并新增测量微分滤波、前馈配置和数值检查，详见[速度控制升级](Speed_Control_Upgrade.md)和[转速—PID 调参指引](Speed_PID_Tuning_Guide.md)。测速已改为 8 拍（40 ms）滑动窗口，单计数约 3.4 rpm。
 - 先按停止，等停止回传后，在对应轮的输入框修改内环 PID 并点击写入。对照“实际内环 PID”确认回传生效，两个轮独立调整；需要掉电保留时，在板端菜单手动选择 `Save parameters`。
