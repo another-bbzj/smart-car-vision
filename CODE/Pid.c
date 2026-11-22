@@ -182,8 +182,7 @@ uint8_t Car_Pid_init(Car_Pid_Struct *p, float kp, float ki, float kd, float limi
  *     Car_Pid_configure(&pid, 1.0f, 0.02f, 1.0f, 0.0f, 0.0f, 0.0f);
  * 备注信息：所有参数都必须为有限数；校验失败时不会写入任何一个字段。
  */
-uint8_t Car_Pid_configure(Car_Pid_Struct *p, float beta, float tau,
-                          float fraction, float ks, float kv, float ka)
+uint8_t Car_Pid_configure(Car_Pid_Struct *p, float beta, float tau, float fraction, float ks, float kv, float ka)
 {
     /* 配置参数必须有限且在合理范围内，否则整体拒绝，保持原配置不变。 */
     if (!number(beta) || !number(tau) || !number(fraction) ||
@@ -229,8 +228,7 @@ uint8_t Car_Pid_configure(Car_Pid_Struct *p, float beta, float tau,
  *           结合 p->fault 判断是否发生故障。故障一旦锁存，后续调用直接
  *           返回 0，直到 reset()。
  */
-float Car_Pid_update_dt(Car_Pid_Struct *p, float target, float measure,
-                       float acceleration, float dt)
+float Car_Pid_update_dt(Car_Pid_Struct *p, float target, float measure, float acceleration, float dt)
 {
     float error;                                           /* 速度误差 = target - measure，rpm */
     float raw_d = 0.0f;                                    /* 未滤波的测量变化率，rpm/s */
@@ -420,8 +418,7 @@ void Car_PidInc_reset(Car_PidInc_Struct *p)
  * 备注信息：默认值与位置式一致：beta = 1、微分滤波 0.02 s、
  *           积分上限等于输出上限、前馈系数全为 0。
  */
-uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd,
-                        float limit)
+uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd, float limit)
 {
     memset(p, 0, sizeof(*p));       /* 先整体清零，失败路径不留旧数据 */
 
@@ -479,8 +476,7 @@ uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd,
  *     Car_PidInc_configure(&pid_inc, 1.0f, 0.02f, 1.0f, 0.0f, 0.0f, 0.0f);
  * 备注信息：所有参数都必须为有限数；校验失败时不会写入任何一个字段。
  */
-uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float tau,
-                             float fraction, float ks, float kv, float ka)
+uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float tau, float fraction, float ks, float kv, float ka)
 {
     /* 配置参数必须有限且在合理范围内，否则整体拒绝，保持原配置不变。 */
     if (!number(beta) || !number(tau) || !number(fraction) ||
@@ -522,10 +518,7 @@ uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float tau,
  * 返回参数：1 成功；0 参数无效，保留原配置。
  * 备注信息：只改调度参数，不清积分/P/FF 历史；基础 Kp/Ki 不变。
  */
-uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm,
-                                 float high_speed_rpm, float kp_scale_low,
-                                 float ki_scale_low, float band_rpm,
-                                 float band_scale, float band_speed_rpm)
+uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm, float high_speed_rpm, float kp_scale_low, float ki_scale_low, float band_rpm, float band_scale, float band_speed_rpm)
 {
     if (!number(low_speed_rpm) || !number(high_speed_rpm) ||
         !number(kp_scale_low) || !number(ki_scale_low) ||
@@ -567,9 +560,7 @@ uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm,
  * 返回参数：1 成功并启用死区模型；0 参数无效，保留旧 Ks/Kv 模型。
  * 备注信息：只改前馈配置，不清积分/P/D 历史；适合停车状态调用一次。
  */
-uint8_t Car_PidInc_set_friction_ff(Car_PidInc_Struct *p, float dead_run,
-                                   float dead_start, float gain,
-                                   float decay_rpm)
+uint8_t Car_PidInc_set_friction_ff(Car_PidInc_Struct *p, float dead_run, float dead_start, float gain, float decay_rpm)
 {
     if (!number(dead_run) || !number(dead_start) ||
         !number(gain) || !number(decay_rpm) ||
@@ -610,8 +601,7 @@ uint8_t Car_PidInc_set_friction_ff(Car_PidInc_Struct *p, float dead_run,
  *           执行器限幅仅作用于返回值。递推基准是未限幅输出，不是限幅
  *           后的执行器输出，因此饱和期间 P/FF 的历史不会被丢掉。
  */
-float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
-                           float acceleration, float dt)
+float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure, float acceleration, float dt)
 {
     float error;                                           /* 速度误差 = target - measure，rpm */
     float raw_d = 0.0f;                                    /* 未滤波的测量变化率，rpm/s */

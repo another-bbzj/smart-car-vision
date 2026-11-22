@@ -1,5 +1,5 @@
-#ifndef PID_H
-#define PID_H
+#ifndef PID_MODULE_H
+#define PID_MODULE_H
 /*
  * ============================================================================
  * 文件名称：Pid.h
@@ -216,8 +216,7 @@ uint8_t Car_Pid_init(Car_Pid_Struct *p, float kp, float ki, float kd, float limi
  * @param ka       加速度前馈系数，范围 [0, 10000]。
  * @return 1 成功并清除动态历史及故障；0 拒绝且保留原配置与历史。
  */
-uint8_t Car_Pid_configure(Car_Pid_Struct *p, float beta, float derivative_tau_s,
-                          float integral_fraction, float ks, float kv, float ka);
+uint8_t Car_Pid_configure(Car_Pid_Struct *p, float beta, float derivative_tau_s, float integral_fraction, float ks, float kv, float ka);
 
 /**
  * @brief 保留配置，清空积分、微分历史、最近输出和状态标志。
@@ -236,8 +235,7 @@ void Car_Pid_reset(Car_Pid_Struct *p);
  * @return [-output_limit, output_limit] 内的 PWM 数值；故障时返回 0。
  * @note 零返回值也可能是正常输出，须结合 p->fault 判断；故障会锁存。
  */
-float Car_Pid_update_dt(Car_Pid_Struct *p, float target, float measure,
-                        float target_acceleration, float dt_s);
+float Car_Pid_update_dt(Car_Pid_Struct *p, float target, float measure, float target_acceleration, float dt_s);
 
 /**
  * @brief 固定 5 ms、参考加速度为 0 的兼容入口，其余语义同 update_dt。
@@ -335,8 +333,7 @@ typedef struct
  * @return 1 成功；0 参数无效，此时对象已清空并置 fault = 1。
  * @note 默认值与位置式一致：beta = 1、微分滤波 0.02 s、积分上限等于输出上限。
  */
-uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd,
-                        float limit);
+uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd, float limit);
 
 /**
  * @brief 在已初始化的增量式 PID 上配置目标权重、微分滤波和前馈。
@@ -349,8 +346,7 @@ uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd,
  * @param ka       加速度前馈系数，范围 [0, 10000]。
  * @return 1 成功并清除动态历史及故障；0 拒绝且保留原配置与历史。
  */
-uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float derivative_tau_s,
-                             float integral_fraction, float ks, float kv, float ka);
+uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float derivative_tau_s, float integral_fraction, float ks, float kv, float ka);
 
 /**
  * @brief 配置低速增益调度和积分分离；不清除积分/P/FF 历史。
@@ -365,10 +361,7 @@ uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float derivative_
  * @return 1 成功；0 参数无效，保留原配置。
  * @note 调度的系数乘在 kp/ki 基础增益上；基础增益仍由 init/蓝牙命令 4 决定。
  */
-uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm,
-                                 float high_speed_rpm, float kp_scale_low,
-                                 float ki_scale_low, float band_rpm,
-                                 float band_scale, float band_speed_rpm);
+uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm, float high_speed_rpm, float kp_scale_low, float ki_scale_low, float band_rpm, float band_scale, float band_speed_rpm);
 
 /**
  * @brief 配置死区前馈模型：PWM = dead_run + gain×|rpm|，起步时 dead_start 衰减。
@@ -380,9 +373,7 @@ uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm,
  * @return 1 成功并启用死区模型；0 参数无效，保留旧 Ks/Kv 模型。
  * @note 该配置不清除积分/P/FF 历史；适合在停车状态调用一次。
  */
-uint8_t Car_PidInc_set_friction_ff(Car_PidInc_Struct *p, float dead_run,
-                                   float dead_start, float gain,
-                                   float decay_rpm);
+uint8_t Car_PidInc_set_friction_ff(Car_PidInc_Struct *p, float dead_run, float dead_start, float gain, float decay_rpm);
 
 /**
  * @brief 保留配置，清空积分、微分历史、上一拍输出和状态标志。
@@ -401,8 +392,7 @@ void Car_PidInc_reset(Car_PidInc_Struct *p);
  * @return [-output_limit, output_limit] 内的 PWM 数值；故障时返回 0。
  * @note 与位置式一样，零返回值也可能是正常输出，须结合 p->fault 判断。
  */
-float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
-                           float target_acceleration, float dt_s);
+float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure, float target_acceleration, float dt_s);
 
 /**
  * @brief 固定 5 ms、参考加速度为 0 的增量式兼容入口。
@@ -413,4 +403,4 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
  */
 float Car_PidInc_update(Car_PidInc_Struct *p, float target, float measure);
 
-#endif
+#endif /* PID_MODULE_H */

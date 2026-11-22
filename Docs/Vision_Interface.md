@@ -16,7 +16,7 @@
 ## 固件API
 
 ```c
-#include "platform/Platform_Main.h"
+#include "Platform_Main.h"
 
 CarVisionObservation observation;
 if (Car_GetVisionObservation(&observation)) {

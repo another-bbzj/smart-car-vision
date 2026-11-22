@@ -45,18 +45,18 @@ SHA256: A4090473B087C02703805853C36AC6FF07263C7D5B581BD4B50E3C32BFDEFB96
 | `Library/HAL_lib/Core/Src/main.c` | HAL/时钟初始化后调用 `User_Main()` | 启动与平台维护 |
 | `User/NEUQ_Main.c` | 应用入口，调用 `Platform_Main()` | 平台维护 |
 | `User/NEUQ_Interrupts.c` | PIT、串口回调转发 | 平台维护，修改前协调 |
-| `CODE/platform/Platform_Main.c/.h` | 平台入口：外设初始化、控制节拍、FIFO、运动输出、前台任务和共享快照 | 硬件/集成人员；保持一个主维护人 |
+| `CODE/Platform_Main.c/.h` | 平台入口：外设初始化、控制节拍、FIFO、运动输出、前台任务和共享快照 | 硬件/集成人员；保持一个主维护人 |
 | `CODE/Board_Config.h` | 引脚、周期、CPR、速度/PWM限幅、PID 默认值和保护阈值 | 全组共同确认配置 |
-| `CODE/menu/Menu_Task.c/.h` | 三级导航、调参候选值、发车/保存动作请求、逐行格式化 | 交互人员 |
-| `CODE/driver/Drv_Motor.c/.h`、`Drv_Encoder.c/.h`、`Drv_Key.c/.h`、`Drv_Lcd.c/.h`、`Drv_Gyro.c/.h`、`Drv_Clock.c/.h`、`Drv_Uart.c/.h` | 电机 PWM/方向、编码器计数、按键消抖、LCD 缓存刷新、MPU6050、微秒时基和串口收发 | 交互/驱动人员 |
-| `CODE/protocol/Proto_Bluetooth.c/.h` | 蓝牙帧解析、轮速命令接入与应答 | 通信人员，与底盘控制共同维护契约 |
-| `CODE/protocol/Proto_Vision.c/.h` | 视觉字节协议、校验、会话/序号、观测与四块缓存 | 通信人员，与视觉侧共同维护契约 |
-| `CODE/protocol/Proto_Vofa.c/.h` | 遥测整帧入队，前台分次发送 | 通信人员 |
-| `CODE/pid/Pid.c/.h` | 位置式与增量式 PID 纯算法；内环速度环调用增量式，外环位置环调用位置式（默认关闭） | 速度环人员 |
-| `CODE/pid/Pid_Storage.c/.h` | PID 记录格式、CRC、日志查找、保存/恢复，内部 Flash 扇区读写、擦除和缓存处理 | 参数存储/平台人员 |
-| `CODE/sudoku/Sudoku.c/.h` | 四块拼接、6×6 数独唯一解检查 | 任务/算法人员 |
-| `CODE/task/Task_Fsm.c/.h` | 整车状态、曲率到双轮目标、里程/航向、断路、绕黄障、红障停等、练习终点 | 任务控制人员 |
-| `CODE/track/Track_Fsm.c/.h` | 巡线状态机、手动模式双轮共享进度的五次参考曲线 | 速度环/巡线人员 |
+| `CODE/Menu_Task.c/.h` | 三级导航、调参候选值、发车/保存动作请求、逐行格式化 | 交互人员 |
+| `CODE/Drv_Motor.c/.h`、`Drv_Encoder.c/.h`、`Drv_Key.c/.h`、`Drv_Lcd.c/.h`、`Drv_Gyro.c/.h`、`Drv_Clock.c/.h`、`Drv_Uart.c/.h` | 电机 PWM/方向、编码器计数、按键消抖、LCD 缓存刷新、MPU6050、微秒时基和串口收发 | 交互/驱动人员 |
+| `CODE/Proto_Bluetooth.c/.h` | 蓝牙帧解析、轮速命令接入与应答 | 通信人员，与底盘控制共同维护契约 |
+| `CODE/Proto_Vision.c/.h` | 视觉字节协议、校验、会话/序号、观测与四块缓存 | 通信人员，与视觉侧共同维护契约 |
+| `CODE/Proto_Vofa.c/.h` | 遥测整帧入队，前台分次发送 | 通信人员 |
+| `CODE/Pid.c/.h` | 位置式与增量式 PID 纯算法；内环速度环调用增量式，外环位置环调用位置式（默认关闭） | 速度环人员 |
+| `CODE/Pid_Storage.c/.h` | PID 记录格式、CRC、日志查找、保存/恢复，内部 Flash 扇区读写、擦除和缓存处理 | 参数存储/平台人员 |
+| `CODE/Sudoku.c/.h` | 四块拼接、6×6 数独唯一解检查 | 任务/算法人员 |
+| `CODE/Task_Fsm.c/.h` | 整车状态、曲率到双轮目标、里程/航向、断路、绕黄障、红障停等、练习终点 | 任务控制人员 |
+| `CODE/Track_Fsm.c/.h` | 巡线状态机、手动模式双轮共享进度的五次参考曲线 | 速度环/巡线人员 |
 | `Tools/`、`Tests/` | 电脑调试台、协议参考、编译脚本、回归测试 | 修改对应功能的人同步维护 |
 | `vision_inspection/vision/` | 香橙派视觉程序 | 图像人员；控制侧变更协议时同步联调 |
 
@@ -150,7 +150,7 @@ flowchart TD
 | 默认 PID | 两轮均 Kp=8.0，Ki=0.30，Kd=0 | `Board_Config.h`；有效保存记录优先于这些默认值，详见[调参指引](Speed_PID_Tuning_Guide.md) |
 | 微分滤波/目标权重 | 0.020 s / 1.0 | `CAR_PID_D_TAU_S` / `CAR_PID_SETPOINT_WEIGHT` |
 | 前馈 | Ks/Kv/Ka 均为 0 | `Board_Config.h`，未做本车辨识 |
-| 轮半径/轮距 | 0.0325 m / 0.173 m | `CODE/task/Task_Fsm.h`，轮距为几何初值 |
+| 轮半径/轮距 | 0.0325 m / 0.173 m | `CODE/Task_Fsm.h`，轮距为几何初值 |
 | 圈长/练习终点 | 55.061 m / 110.122 m | `RACE_LAP_M` / `RACE_FINISH_M` |
 | 断路进入位置 | 0 | `RACE_GAP_ENTRY_M`；0 表示不使用固定沿程窗口，仍要求视觉候选及近期直行 |
 | 黄障绕行 | 左侧，目标偏移 0.18 m | `RACE_BYPASS_SIDE` / `RACE_BYPASS_OFFSET_M` |
@@ -327,7 +327,7 @@ VERSION=1，多字节字段大端；CRC16-CCITT-FALSE：0x1021、初值 0xFFFF�
 |---|---|---|
 | 换电机、改减速比/编码器 | `Board_Config.h` 的 CPR、符号及限幅 | 转速、里程、圈数、断路距离会一起受影响 |
 | 修改内环速度环增益/算法 | `Board_Config.h` 默认值或蓝牙命令 4；算法在 `pid/Pid` | 测速窗口、dt、Ki/Kd 语义、复位、饱和、换向、左右轮一致性；先看[调参指引](Speed_PID_Tuning_Guide.md)，不能只增加新函数而不切调用 |
-| 改轮径/轮距/绕行方向 | `CODE/task/Task_Fsm.h` | 运动学单位、陀螺符号、双圈仿真 |
+| 改轮径/轮距/绕行方向 | `CODE/Task_Fsm.h` | 运动学单位、陀螺符号、双圈仿真 |
 | 增加赛项/盲盒 | `RacePhase`、`Track_Step()` | 明确进入/结束/超时/重复触发；同步菜单阶段名称数组和 `test_car_race.c` |
 | 接入真正终点 | `Track_Step()` 的完成条件及视觉契约 | 不能把任何 FINISH 候选直接当已确认终点；保持后续静止/收块/求解流程 |
 | 增加菜单页 | `menu/Menu_Task.h/.c` | 分类和条目数量、索引、32字符行宽、返回/长按、状态门控与渲染测试 |

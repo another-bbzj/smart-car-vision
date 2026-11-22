@@ -2,7 +2,7 @@
 
 适用：NEUQ_STM32F407VET6 双轮差速底盘，内环增量式速度 PID。
 
-相关代码：[Board_Config.h](../CODE/Board_Config.h)、[task/Task_Fsm.c](../CODE/task/Task_Fsm.c)、[pid/Pid.c](../CODE/pid/Pid.c)、[track/Track_Fsm.c](../CODE/track/Track_Fsm.c)。
+相关代码：[Board_Config.h](../CODE/Board_Config.h)、[task/Task_Fsm.c](../CODE/Task_Fsm.c)、[pid/Pid.c](../CODE/Pid.c)、[track/Track_Fsm.c](../CODE/Track_Fsm.c)。
 配套文档：[蓝牙调试协议](Bluetooth_Car.md)、[速度控制升级](Speed_Control_Upgrade.md)、[PID 掉电保存](PID_Storage.md)。
 
 本页给出五件事：
@@ -17,7 +17,7 @@
 
 ## 1. 先算清楚：车速 ↔ 轮速 ↔ 编码器计数
 
-轮胎参数取自 [track/Track_Fsm.h](../CODE/track/Track_Fsm.h)：
+轮胎参数取自 [track/Track_Fsm.h](../CODE/Track_Fsm.h)：
 
 ```text
 RACE_RADIUS_M = 0.0325 m      /* 65 mm 直径，几何半径；比赛前用负载滚动周长复核 */

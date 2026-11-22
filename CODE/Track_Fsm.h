@@ -105,8 +105,6 @@ void Track_Start(TrackState *r);
  * 返回参数：左右轮目标转速；赛段为 RED/FINISHED/FAULT 时返回 0/0。
  * 备注信息：dt 超出 1..15.1 ms 直接判赛段故障（控制节拍本身已经坏了）。
  */
-TrackDrive Track_Step(TrackState *r, const CarVisionObservation *o, float left_m,
-                      float right_m, float dt, float gyro, uint8_t gyro_ok,
-                      uint8_t stationary, uint32_t now_ms);
+TrackDrive Track_Step(TrackState *r, const CarVisionObservation *o, float left_m, float right_m, float dt, float gyro, uint8_t gyro_ok, uint8_t stationary, uint32_t now_ms);
 
 #endif

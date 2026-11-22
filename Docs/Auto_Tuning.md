@@ -2,7 +2,7 @@
 
 适用：NEUQ_STM32F407VET6 双轮差速底盘，网页调试台的内环速度环自动调参。
 
-相关代码：[Board_Config.h](../CODE/Board_Config.h)、[task/Task_Fsm.c](../CODE/task/Task_Fsm.c)、[car_console.html](../Tools/car_console.html)。
+相关代码：[Board_Config.h](../CODE/Board_Config.h)、[task/Task_Fsm.c](../CODE/Task_Fsm.c)、[car_console.html](../Tools/car_console.html)。
 配套文档：[蓝牙调试协议](Bluetooth_Car.md)、[转速—PID 调参指引](Speed_PID_Tuning_Guide.md)、[速度控制升级](Speed_Control_Upgrade.md)。
 
 ---

@@ -37,7 +37,7 @@
           <bCustSvd>0</bCustSvd>
           <UseEnv>0</UseEnv>
           <BinPath></BinPath>
-          <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE;../CODE/menu;../CODE/driver;../CODE/protocol;../CODE/pid;../CODE/sudoku;../CODE/task;../CODE/track;../CODE/platform</IncludePath>
+          <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE</IncludePath>
           <LibPath></LibPath>
           <RegisterFilePath></RegisterFilePath>
           <DBRegisterFilePath></DBRegisterFilePath>
@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE;../CODE/menu;../CODE/driver;../CODE/protocol;../CODE/pid;../CODE/sudoku;../CODE/task;../CODE/track;../CODE/platform</IncludePath>
+              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -358,7 +358,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE;../CODE/menu;../CODE/driver;../CODE/protocol;../CODE/pid;../CODE/sudoku;../CODE/task;../CODE/track;../CODE/platform</IncludePath>
+              <IncludePath>.;../Library/HAL_lib/Core/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc;../Library/HAL_lib/STM32F4xx_HAL_Driver/Inc/Legacy;../Library/NEUQ_lib;../Library/NEUQ_lib/NEUQ_lib_APP;../Library/NEUQ_lib/NEUQ_lib_Debug;../Library/NEUQ_lib/NEUQ_lib_Device;../Library/NEUQ_lib/NEUQ_lib_Driver;../User;../CODE</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -1047,12 +1047,12 @@
             <File>
               <FileName>Menu_Task.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/menu/Menu_Task.c</FilePath>
+              <FilePath>../CODE/Menu_Task.c</FilePath>
             </File>
             <File>
               <FileName>Menu_Task.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/menu/Menu_Task.h</FilePath>
+              <FilePath>../CODE/Menu_Task.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1062,72 +1062,72 @@
             <File>
               <FileName>Drv_Motor.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/driver/Drv_Motor.c</FilePath>
+              <FilePath>../CODE/Drv_Motor.c</FilePath>
             </File>
             <File>
               <FileName>Drv_Motor.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/driver/Drv_Motor.h</FilePath>
+              <FilePath>../CODE/Drv_Motor.h</FilePath>
             </File>
             <File>
               <FileName>Drv_Encoder.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/driver/Drv_Encoder.c</FilePath>
+              <FilePath>../CODE/Drv_Encoder.c</FilePath>
             </File>
             <File>
               <FileName>Drv_Encoder.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/driver/Drv_Encoder.h</FilePath>
+              <FilePath>../CODE/Drv_Encoder.h</FilePath>
             </File>
             <File>
               <FileName>Drv_Key.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/driver/Drv_Key.c</FilePath>
+              <FilePath>../CODE/Drv_Key.c</FilePath>
             </File>
             <File>
               <FileName>Drv_Key.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/driver/Drv_Key.h</FilePath>
+              <FilePath>../CODE/Drv_Key.h</FilePath>
             </File>
             <File>
               <FileName>Drv_Lcd.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/driver/Drv_Lcd.c</FilePath>
+              <FilePath>../CODE/Drv_Lcd.c</FilePath>
             </File>
             <File>
               <FileName>Drv_Lcd.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/driver/Drv_Lcd.h</FilePath>
+              <FilePath>../CODE/Drv_Lcd.h</FilePath>
             </File>
             <File>
               <FileName>Drv_Gyro.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/driver/Drv_Gyro.c</FilePath>
+              <FilePath>../CODE/Drv_Gyro.c</FilePath>
             </File>
             <File>
               <FileName>Drv_Gyro.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/driver/Drv_Gyro.h</FilePath>
+              <FilePath>../CODE/Drv_Gyro.h</FilePath>
             </File>
             <File>
               <FileName>Drv_Clock.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/driver/Drv_Clock.c</FilePath>
+              <FilePath>../CODE/Drv_Clock.c</FilePath>
             </File>
             <File>
               <FileName>Drv_Clock.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/driver/Drv_Clock.h</FilePath>
+              <FilePath>../CODE/Drv_Clock.h</FilePath>
             </File>
             <File>
               <FileName>Drv_Uart.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/driver/Drv_Uart.c</FilePath>
+              <FilePath>../CODE/Drv_Uart.c</FilePath>
             </File>
             <File>
               <FileName>Drv_Uart.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/driver/Drv_Uart.h</FilePath>
+              <FilePath>../CODE/Drv_Uart.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1137,32 +1137,32 @@
             <File>
               <FileName>Proto_Bluetooth.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/protocol/Proto_Bluetooth.c</FilePath>
+              <FilePath>../CODE/Proto_Bluetooth.c</FilePath>
             </File>
             <File>
               <FileName>Proto_Bluetooth.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/protocol/Proto_Bluetooth.h</FilePath>
+              <FilePath>../CODE/Proto_Bluetooth.h</FilePath>
             </File>
             <File>
               <FileName>Proto_Vision.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/protocol/Proto_Vision.c</FilePath>
+              <FilePath>../CODE/Proto_Vision.c</FilePath>
             </File>
             <File>
               <FileName>Proto_Vision.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/protocol/Proto_Vision.h</FilePath>
+              <FilePath>../CODE/Proto_Vision.h</FilePath>
             </File>
             <File>
               <FileName>Proto_Vofa.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/protocol/Proto_Vofa.c</FilePath>
+              <FilePath>../CODE/Proto_Vofa.c</FilePath>
             </File>
             <File>
               <FileName>Proto_Vofa.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/protocol/Proto_Vofa.h</FilePath>
+              <FilePath>../CODE/Proto_Vofa.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1172,22 +1172,22 @@
             <File>
               <FileName>Pid.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/pid/Pid.c</FilePath>
+              <FilePath>../CODE/Pid.c</FilePath>
             </File>
             <File>
               <FileName>Pid.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/pid/Pid.h</FilePath>
+              <FilePath>../CODE/Pid.h</FilePath>
             </File>
             <File>
               <FileName>Pid_Storage.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/pid/Pid_Storage.c</FilePath>
+              <FilePath>../CODE/Pid_Storage.c</FilePath>
             </File>
             <File>
               <FileName>Pid_Storage.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/pid/Pid_Storage.h</FilePath>
+              <FilePath>../CODE/Pid_Storage.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1197,12 +1197,12 @@
             <File>
               <FileName>Sudoku.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/sudoku/Sudoku.c</FilePath>
+              <FilePath>../CODE/Sudoku.c</FilePath>
             </File>
             <File>
               <FileName>Sudoku.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/sudoku/Sudoku.h</FilePath>
+              <FilePath>../CODE/Sudoku.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1212,12 +1212,12 @@
             <File>
               <FileName>Task_Fsm.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/task/Task_Fsm.c</FilePath>
+              <FilePath>../CODE/Task_Fsm.c</FilePath>
             </File>
             <File>
               <FileName>Task_Fsm.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/task/Task_Fsm.h</FilePath>
+              <FilePath>../CODE/Task_Fsm.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1227,12 +1227,12 @@
             <File>
               <FileName>Track_Fsm.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/track/Track_Fsm.c</FilePath>
+              <FilePath>../CODE/Track_Fsm.c</FilePath>
             </File>
             <File>
               <FileName>Track_Fsm.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/track/Track_Fsm.h</FilePath>
+              <FilePath>../CODE/Track_Fsm.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -1242,12 +1242,12 @@
             <File>
               <FileName>Platform_Main.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../CODE/platform/Platform_Main.c</FilePath>
+              <FilePath>../CODE/Platform_Main.c</FilePath>
             </File>
             <File>
               <FileName>Platform_Main.h</FileName>
               <FileType>5</FileType>
-              <FilePath>../CODE/platform/Platform_Main.h</FilePath>
+              <FilePath>../CODE/Platform_Main.h</FilePath>
             </File>
           </Files>
         </Group>

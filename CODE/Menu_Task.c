@@ -40,8 +40,7 @@ static const char *const conditions[] = {"Ready", "Stop / clear fault first", "W
 static const char *const phases[] = {"Track","Gap","Bypass","Red stop","Finish","Fault"};
 enum { FB_NONE, FB_APPLIED, FB_STOP, FB_INVALID };
 
-StartCondition Menu_StartCondition(const Car_Core *car, uint8_t still, uint8_t pending,
-                                      const CarVisionObservation *road, uint32_t previous_session)
+StartCondition Menu_StartCondition(const Car_Core *car, uint8_t still, uint8_t pending, const CarVisionObservation *road, uint32_t previous_session)
 {
     if (car->state != CAR_STOP) return START_STOP_FIRST;
     if (!still) return START_MOVING;

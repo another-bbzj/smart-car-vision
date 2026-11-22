@@ -74,8 +74,7 @@ typedef struct {
  *           previous_session —— 上一场比赛的视觉会话号。
  * 返回参数：发车条件枚举。
  */
-StartCondition Menu_StartCondition(const Car_Core *car, uint8_t still, uint8_t pending,
-                                   const CarVisionObservation *road, uint32_t previous_session);
+StartCondition Menu_StartCondition(const Car_Core *car, uint8_t still, uint8_t pending, const CarVisionObservation *road, uint32_t previous_session);
 
 /*
  * 函数名称：Menu_Key

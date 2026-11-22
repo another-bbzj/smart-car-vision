@@ -379,8 +379,7 @@ static void accept(CarVision *v, uint32_t now, uint8_t allow_hello)
  *                    car.state == CAR_STOP);
  * 备注信息：长度或 CRC 异常时只滑动一个字节，保留缓冲区内潜在的下一帧帧头。
  */
-void CarVision_Feed(CarVision *v, uint8_t byte, uint32_t now_ms,
-                    uint8_t allow_hello)
+void CarVision_Feed(CarVision *v, uint8_t byte, uint32_t now_ms, uint8_t allow_hello)
 {
     unsigned i;                      /* CRC 计算循环下标 */
     unsigned total;                  /* 整帧总长度，字节 */
@@ -489,8 +488,7 @@ void CarVision_Feed(CarVision *v, uint8_t byte, uint32_t now_ms,
  * 备注信息：总年龄 = 发送端处理年龄 + 本机接收后经过时间；
  *           拆成两个比较避免加法溢出。
  */
-uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms,
-                                 CarVisionObservation *out)
+uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms, CarVisionObservation *out)
 {
     uint32_t age;             /* 本机收到观测后经过的时间，毫秒 */
 
@@ -529,8 +527,7 @@ uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms,
  * 备注信息：数独块在当前会话内保留，不按观测的 200 ms 时效自动淘汰；
  *           这里只排除时间戳明显来自“未来”的异常数据。
  */
-uint8_t CarVision_GetTile(const CarVision *v, uint8_t index, uint32_t now_ms,
-                          CarVisionTile *out)
+uint8_t CarVision_GetTile(const CarVision *v, uint8_t index, uint32_t now_ms, CarVisionTile *out)
 {
     /*
      * 半范围比较排除看似来自“未来”的时间戳；

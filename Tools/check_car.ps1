@@ -22,8 +22,7 @@ try {
     }
 
     # 代码目录按功能分类，头文件按文件名互相引用，因此每个子目录都要加进 -I。
-    $inc = '-I Tests/stubs -I CODE -I CODE/menu -I CODE/driver -I CODE/protocol ' +
-           '-I CODE/pid -I CODE/sudoku -I CODE/task -I CODE/track -I CODE/platform'
+    $inc = '-I Tests/stubs -I CODE'
 
     python -m unittest discover -s Tests -p 'test_*.py' -v
     if ($LASTEXITCODE -ne 0) { throw 'Python tests failed' }
@@ -37,38 +36,38 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Cold start / UART routing failed (vision=$visionEnabled)" }
     }
 
-    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_core.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_core.exe
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_core.c CODE/Task_Fsm.c CODE/Pid.c CODE/Proto_Bluetooth.c -o build/test_car_core.exe
     if ($LASTEXITCODE -ne 0) { throw 'Core test compilation failed' }
     & (Join-Path $carOutput 'test_car_core.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
 
-    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_pid.c CODE/pid/Pid.c -o build/test_car_pid.exe
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_pid.c CODE/Pid.c -o build/test_car_pid.exe
     if ($LASTEXITCODE -ne 0) { throw 'PID test compilation failed' }
     & (Join-Path $carOutput 'test_car_pid.exe')
     if ($LASTEXITCODE -ne 0) { throw 'PID tests failed' }
 
-    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_vision.c CODE/protocol/Proto_Vision.c -o build/test_car_vision.exe
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_vision.c CODE/Proto_Vision.c -o build/test_car_vision.exe
     if ($LASTEXITCODE -ne 0) { throw 'Vision test compilation failed' }
     & (Join-Path $carOutput 'test_car_vision.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Vision tests failed' }
 
-    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_menu.c CODE/menu/Menu_Task.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_menu.exe
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_menu.c CODE/Menu_Task.c CODE/Task_Fsm.c CODE/Pid.c CODE/Proto_Bluetooth.c -o build/test_car_menu.exe
     if ($LASTEXITCODE -ne 0) { throw 'Menu test compilation failed' }
     & (Join-Path $carOutput 'test_car_menu.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Menu tests failed' }
 
     # 参数存储测试只编译记录编解码，不编译片内 Flash 读写（那部分要 HAL_FLASH）。
-    clang -std=c99 -Wall -Wextra -Werror $inc '-DPID_STORAGE_WITH_FLASH=0' Tests/test_car_params.c CODE/pid/Pid_Storage.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_params.exe
+    clang -std=c99 -Wall -Wextra -Werror $inc '-DPID_STORAGE_WITH_FLASH=0' Tests/test_car_params.c CODE/Pid_Storage.c CODE/Task_Fsm.c CODE/Pid.c CODE/Proto_Bluetooth.c -o build/test_car_params.exe
     if ($LASTEXITCODE -ne 0) { throw 'PID storage compilation failed' }
     & (Join-Path $carOutput 'test_car_params.exe')
     if ($LASTEXITCODE -ne 0) { throw 'PID storage tests failed' }
 
-    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_sudoku.c CODE/sudoku/Sudoku.c -o build/test_car_sudoku.exe
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_sudoku.c CODE/Sudoku.c -o build/test_car_sudoku.exe
     if ($LASTEXITCODE -ne 0) { throw 'Sudoku test compilation failed' }
     & (Join-Path $carOutput 'test_car_sudoku.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Sudoku tests failed' }
 
-    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_race.c CODE/track/Track_Fsm.c CODE/sudoku/Sudoku.c CODE/task/Task_Fsm.c CODE/pid/Pid.c CODE/protocol/Proto_Bluetooth.c -o build/test_car_race.exe
+    clang -std=c99 -Wall -Wextra -Werror $inc Tests/test_car_race.c CODE/Track_Fsm.c CODE/Sudoku.c CODE/Task_Fsm.c CODE/Pid.c CODE/Proto_Bluetooth.c -o build/test_car_race.exe
     if ($LASTEXITCODE -ne 0) { throw 'Race test compilation failed' }
     & (Join-Path $carOutput 'test_car_race.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Race tests failed' }

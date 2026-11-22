@@ -78,9 +78,7 @@ static void enter(TrackState *r, TrackPhase phase, uint32_t now) {
     r->clear_frames = 0;
 }
 
-TrackDrive Track_Step(TrackState *r, const CarVisionObservation *o, float dl,
-                    float dr, float dt, float gyro, uint8_t gyro_ok,
-                    uint8_t stationary, uint32_t now) {
+TrackDrive Track_Step(TrackState *r, const CarVisionObservation *o, float dl, float dr, float dt, float gyro, uint8_t gyro_ok, uint8_t stationary, uint32_t now) {
     TrackDrive stop = {{0,0}};
     float ds = 0.5f * (dl + dr);
     float dyaw = (dr - dl) / TRACK_WIDTH_M;

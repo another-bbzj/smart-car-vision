@@ -247,8 +247,7 @@ void Car_Tick(Car_Core *c, int32_t left_count, int32_t right_count);
  * 备注信息：周期超出 TASK_MIN/MAX_CONTROL_US 进入 CAR_TIMING_FAULT；
  *           结果写入 c->output，硬件层负责应用。
  */
-void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
-                uint32_t dt_us);
+void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count, uint32_t dt_us);
 
 /*
  * 函数名称：Car_Fault

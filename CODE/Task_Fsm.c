@@ -153,8 +153,7 @@ static void speed_window_clear(Car_Core *c)
  *     speed_window_push(c, 0, left_counts, dt_us);
  * 备注信息：窗口满后自动覆盖最旧的一拍；写指针在 0..N-1 之间循环。
  */
-static void speed_window_push(Car_Core *c, unsigned i, int32_t counts,
-                              uint32_t dt_us)
+static void speed_window_push(Car_Core *c, unsigned i, int32_t counts, uint32_t dt_us)
 {
     unsigned index = c->speed_index[i];               /* 当前写指针 */
 
@@ -527,8 +526,7 @@ void Car_RaceWheels(Car_Core *c, const float rpm[2])
  * 备注信息：周期越界、通信超时、堵转或方向异常都会触发故障并停车。
  *           本函数不操作 GPIO/PWM，硬件层负责把 output 应用到电机。
  */
-void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
-                uint32_t dt_us)
+void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count, uint32_t dt_us)
 {
     int32_t counts[2];                            /* 双轮编码器增量，0 左轮 / 1 右轮 */
     unsigned i;                                   /* 双轮循环下标 */

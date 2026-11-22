@@ -49,7 +49,7 @@
 
 ## 协议
 
-对应本仓库 `CODE/task/Task_Fsm.h`：
+对应本仓库 `CODE/Task_Fsm.h`：
 
 - 命令：`C3 3C CMD LEN DATA CRC8`（CRC-8 多项式 0x07）
 - 命令：1 ARM、2 STOP、3 WHEELS（左右大端 int16 rpm）、4 PID、5 心跳、6 OPENLOOP（轮号 + 大端 int16 PWM，仅 RUN，±3000，500 ms 内刷新）

@@ -176,8 +176,7 @@ uint16_t CarVision_Crc16(uint16_t crc, uint8_t byte);
  * @note 无返回值，可读统计观察结果；不直接执行电机动作或发送 ACK。
  *       状态修改须在同一执行上下文完成；跨中断读取应通过硬件层快照接口。
  */
-void CarVision_Feed(CarVision *v, uint8_t byte, uint32_t now_ms,
-                    uint8_t allow_hello);
+void CarVision_Feed(CarVision *v, uint8_t byte, uint32_t now_ms, uint8_t allow_hello);
 
 /**
  * @brief 复制通过时效检查的最新道路观测。
@@ -189,8 +188,7 @@ void CarVision_Feed(CarVision *v, uint8_t byte, uint32_t now_ms,
  *       不含无法测量的排队延迟。
  *       返回有效快照不代表识别到道路：新鲜数据也可能 valid_mask = 0。
  */
-uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms,
-                                 CarVisionObservation *out);
+uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms, CarVisionObservation *out);
 
 /**
  * @brief 复制索引 0~3 的数独块，不使用道路观测的 200 ms 时效规则。
@@ -202,7 +200,6 @@ uint8_t CarVision_GetObservation(const CarVision *v, uint32_t now_ms,
  * @note 失败不修改 out；更新会话或接收异常会使旧块失效。
  *       数独块在本会话内保留，由调用者判断四块拼图是否收齐。
  */
-uint8_t CarVision_GetTile(const CarVision *v, uint8_t index, uint32_t now_ms,
-                          CarVisionTile *out);
+uint8_t CarVision_GetTile(const CarVision *v, uint8_t index, uint32_t now_ms, CarVisionTile *out);
 
 #endif
