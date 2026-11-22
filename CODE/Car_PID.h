@@ -173,9 +173,23 @@ typedef struct
     float beta;             /* 比例项目标权重，范围 [0,1] */
     float derivative_tau_s; /* 微分滤波时间常数，单位秒 */
     float integral_limit;   /* 积分项绝对值上限，单位 PWM */
-    float ks;               /* 静摩擦前馈，单位 PWM */
-    float kv;               /* 速度前馈系数，单位 PWM/rpm */
+    float ks;               /* 旧模型静摩擦前馈，单位 PWM */
+    float kv;               /* 旧模型速度前馈系数，单位 PWM/rpm */
     float ka;               /* 加速度前馈系数，单位 PWM/(rpm/s) */
+
+    /* ---------- 低速增益调度 / 积分分离 / 死区前馈 ---------- */
+    float low_speed_rpm;       /* 低速调度起点，0 表示禁用；单位 rpm */
+    float high_speed_rpm;      /* 低速调度终点；单位 rpm */
+    float kp_scale_low;        /* 低速 Kp 缩放系数，0~1 */
+    float ki_scale_low;        /* 低速 Ki 缩放系数，0~1 */
+    float integral_band_rpm;   /* 积分分离误差带，0 表示禁用；单位 rpm */
+    float integral_scale;      /* 误差带内 Ki 缩放系数，0~1 */
+    float integral_speed_rpm;  /* 目标低于此值才启用积分分离；单位 rpm */
+    float ff_dead_run;         /* 死区模型运行死区，单位 PWM */
+    float ff_dead_start;       /* 死区模型起步断裂值，单位 PWM */
+    float ff_gain;             /* 死区模型速度前馈，单位 PWM/rpm */
+    float ff_decay_rpm;        /* 起步补偿衰减尺度，单位 rpm */
+    uint8_t ff_model;          /* 1=死区前馈模型；0=旧 Ks/Kv 模型 */
 
     /* ---------- 调试/遥测字段（由 update 写入） ---------- */
     float derivative;   /* 滤波后的测量变化率，单位 rpm/s */
@@ -183,6 +197,9 @@ typedef struct
     float d_term;       /* 本周期微分项值，单位 PWM */
     float ff_term;      /* 本周期前馈项值，单位 PWM */
     float delta;        /* 本周期输出增量 Δu，单位 PWM */
+    float kp_effective; /* 本拍实际 Kp = 基础 Kp × 低速调度系数 */
+    float ki_effective; /* 本拍实际 Ki = 基础 Ki × 调度 × 积分分离系数 */
+    float gain_blend;   /* 低速调度混合：0=低速系数，1=高速系数 */
 
     /* ---------- 状态标志 ---------- */
     uint8_t started;    /* 1 表示已有上一周期测量值，可以计算微分 */
@@ -217,6 +234,38 @@ uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd,
  */
 uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float derivative_tau_s,
                              float integral_fraction, float ks, float kv, float ka);
+
+/**
+ * @brief 配置低速增益调度和积分分离；不清除积分/P/FF 历史。
+ * @param p              增量式 PID 对象。
+ * @param low_speed_rpm  低速调度起点（rpm），0 表示禁用调度。
+ * @param high_speed_rpm 高速调度终点（rpm），必须大于 low_speed_rpm。
+ * @param kp_scale_low   低速 Kp 缩放系数，(0, 1]。
+ * @param ki_scale_low   低速 Ki 缩放系数，(0, 1]。
+ * @param band_rpm       积分分离误差带（rpm），0 表示禁用。
+ * @param band_scale     误差带内 Ki 缩放系数，[0, 1]。
+ * @param band_speed_rpm 仅在目标低于此值时启用积分分离（rpm）。
+ * @return 1 成功；0 参数无效，保留原配置。
+ * @note 调度的系数乘在 kp/ki 基础增益上；基础增益仍由 init/蓝牙命令 4 决定。
+ */
+uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm,
+                                 float high_speed_rpm, float kp_scale_low,
+                                 float ki_scale_low, float band_rpm,
+                                 float band_scale, float band_speed_rpm);
+
+/**
+ * @brief 配置死区前馈模型：PWM = dead_run + gain×|rpm|，起步时 dead_start 衰减。
+ * @param p          增量式 PID 对象。
+ * @param dead_run   运行死区，单位 PWM，>= 0。
+ * @param dead_start 起步断裂值，单位 PWM，>= dead_run。
+ * @param gain       速度前馈，单位 PWM/rpm，>= 0。
+ * @param decay_rpm  起步补偿衰减尺度，单位 rpm，> 0。
+ * @return 1 成功并启用死区模型；0 参数无效，保留旧 Ks/Kv 模型。
+ * @note 该配置不清除积分/P/FF 历史；适合在停车状态调用一次。
+ */
+uint8_t Car_PidInc_set_friction_ff(Car_PidInc_Struct *p, float dead_run,
+                                   float dead_start, float gain,
+                                   float decay_rpm);
 
 /**
  * @brief 保留配置，清空积分、微分历史、上一拍输出和状态标志。

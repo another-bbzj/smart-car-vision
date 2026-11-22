@@ -100,7 +100,7 @@ typedef struct
      * 测速滑动窗口。每个控制周期把本拍编码器增量和对应时间压入环形缓冲，
      * 用最近 CAR_SPEED_WINDOW_TICKS 拍的计数和、时间和计算转速，把低分辨率
      * 编码器的量化台阶摊平。左右轮各有一组，复位时一起清空，保证两轮使用
-     * 完全相同的测速条件。
+     * 完全相同的测速条件。固定 8 拍，不做自适应长度。
      */
     int32_t speed_counts[2][CAR_SPEED_WINDOW_TICKS]; /* 每拍有符号计数增量 */
     uint32_t speed_dt_us[2][CAR_SPEED_WINDOW_TICKS]; /* 与计数对应的实测周期 */

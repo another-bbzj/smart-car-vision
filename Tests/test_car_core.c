@@ -212,11 +212,14 @@ int main(void)
     }
     /* Identical encoder input and targets must produce identical speed and PWM
      * on both wheels, so a straight command cannot introduce a speed bias.
-     * Production defaults use wheel-specific static-friction feedforward;
-     * zero it here to isolate the symmetric control law. */
+     * Production defaults use wheel-specific dead-zone feedforward; disable
+     * both the new dead-zone model and the legacy Ks to isolate the symmetric
+     * control law. */
     Car_Init(&c);
     c.pid_speed[0].ks = 0.0f;
     c.pid_speed[1].ks = 0.0f;
+    c.pid_speed[0].ff_model = 0;
+    c.pid_speed[1].ff_model = 0;
     command(&c,1,0,0); wheels(&c,90,90);
     { int i; for(i=0;i<100;i++) {
         if(i%20==0) command(&c,5,0,0);

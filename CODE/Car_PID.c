@@ -91,6 +91,7 @@
 #include "Car_PID.h"
 
 #include <float.h>
+#include <math.h>
 #include <string.h>
 
 /* ========================================================================== */
@@ -440,6 +441,9 @@ void Car_PidInc_reset(Car_PidInc_Struct *p)
     p->d_term = 0.0f;          /* 本拍微分项清零 */
     p->ff_term = 0.0f;         /* 本拍前馈项清零 */
     p->delta = 0.0f;           /* 输出增量清零 */
+    p->kp_effective = p->kp;   /* 调试：本拍实际 Kp 回到基础值 */
+    p->ki_effective = p->ki;   /* 调试：本拍实际 Ki 回到基础值 */
+    p->gain_blend = 1.0f;      /* 调试：调度混合系数回到高速端 */
     p->started = 0;            /* 重新等待首个测量周期 */
     p->fault = 0;              /* 清除锁存故障 */
     p->saturated = 0;          /* 清除饱和标志 */
@@ -485,6 +489,23 @@ uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd,
     p->integral_limit = limit;      /* 积分限幅默认等于输出限幅 */
     p->beta = 1.0f;                 /* 默认使用完整目标 */
     p->derivative_tau_s = 0.02f;    /* 默认微分滤波 20 ms */
+
+    /* 默认不启用低速调度、积分分离和死区前馈，保持旧行为。 */
+    p->low_speed_rpm = 0.0f;        /* 0 = 不启用低速增益调度 */
+    p->high_speed_rpm = 0.0f;       /* 0 = 不启用低速增益调度 */
+    p->kp_scale_low = 1.0f;         /* 低速 Kp 系数，1 = 不缩放 */
+    p->ki_scale_low = 1.0f;         /* 低速 Ki 系数，1 = 不缩放 */
+    p->integral_band_rpm = 0.0f;    /* 0 = 不启用积分分离 */
+    p->integral_scale = 1.0f;       /* 误差带内 Ki 系数，1 = 不缩放 */
+    p->integral_speed_rpm = 0.0f;   /* 0 = 不对目标转速设限 */
+    p->ff_dead_run = 0.0f;          /* 死区模型运行死区，默认 0 */
+    p->ff_dead_start = 0.0f;        /* 死区模型起步断裂值，默认 0 */
+    p->ff_gain = 0.0f;              /* 死区模型速度前馈，默认 0 */
+    p->ff_decay_rpm = 0.0f;         /* 死区模型衰减尺度，默认 0（未启用） */
+    p->ff_model = 0;                /* 0 = 使用旧 Ks/Kv 前馈 */
+    p->kp_effective = kp;           /* 调试：本拍实际 Kp 初值 */
+    p->ki_effective = ki;           /* 调试：本拍实际 Ki 初值 */
+    p->gain_blend = 1.0f;           /* 调试：默认高速端 */
 
     return 1;
 }
@@ -535,6 +556,86 @@ uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float tau,
 }
 
 /*
+ * 函数名称：Car_PidInc_set_low_speed
+ * 函数功能：配置低速 Kp/Ki 调度和误差带内的积分分离。
+ * 参数说明：p              —— 增量式 PID 对象；
+ *           low_speed_rpm  —— 调度起点（rpm），0 且 high=0 表示禁用；
+ *           high_speed_rpm —— 调度终点（rpm），必须大于 low；
+ *           kp_scale_low   —— 低速 Kp 系数，(0,1]；
+ *           ki_scale_low   —— 低速 Ki 系数，(0,1]；
+ *           band_rpm       —— 积分分离误差带（rpm），0 表示禁用；
+ *           band_scale     —— 误差带内 Ki 系数，[0,1]；
+ *           band_speed_rpm —— 仅在目标低于此值时启用积分分离（rpm）。
+ * 返回参数：1 成功；0 参数无效，保留原配置。
+ * 备注信息：只改调度参数，不清积分/P/FF 历史；基础 Kp/Ki 不变。
+ */
+uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm,
+                                 float high_speed_rpm, float kp_scale_low,
+                                 float ki_scale_low, float band_rpm,
+                                 float band_scale, float band_speed_rpm)
+{
+    if (!number(low_speed_rpm) || !number(high_speed_rpm) ||
+        !number(kp_scale_low) || !number(ki_scale_low) ||
+        !number(band_rpm) || !number(band_scale) || !number(band_speed_rpm) ||
+        low_speed_rpm < 0.0f || high_speed_rpm < 0.0f ||
+        kp_scale_low <= 0.0f || kp_scale_low > 1.0f ||
+        ki_scale_low <= 0.0f || ki_scale_low > 1.0f ||
+        band_rpm < 0.0f || band_scale < 0.0f || band_scale > 1.0f ||
+        band_speed_rpm < 0.0f)
+    {
+        return 0;
+    }
+
+    /* 允许 low=high=0 表示完全禁用；否则必须严格 high > low。 */
+    if (high_speed_rpm != 0.0f && high_speed_rpm <= low_speed_rpm)
+    {
+        return 0;
+    }
+
+    p->low_speed_rpm = low_speed_rpm;
+    p->high_speed_rpm = high_speed_rpm;
+    p->kp_scale_low = kp_scale_low;
+    p->ki_scale_low = ki_scale_low;
+    p->integral_band_rpm = band_rpm;
+    p->integral_scale = band_scale;
+    p->integral_speed_rpm = band_speed_rpm;
+    return 1;
+}
+
+/*
+ * 函数名称：Car_PidInc_set_friction_ff
+ * 函数功能：启用死区前馈模型 PWM = dead_run + gain×|rpm|，起步时 dead_start
+ *           随速度平滑衰减到 dead_run。
+ * 参数说明：p          —— 增量式 PID 对象；
+ *           dead_run   —— 运行死区（PWM），>= 0；
+ *           dead_start —— 起步断裂值（PWM），>= dead_run；
+ *           gain       —— 速度前馈（PWM/rpm），>= 0；
+ *           decay_rpm  —— 起步补偿衰减尺度（rpm），> 0。
+ * 返回参数：1 成功并启用死区模型；0 参数无效，保留旧 Ks/Kv 模型。
+ * 备注信息：只改前馈配置，不清积分/P/D 历史；适合停车状态调用一次。
+ */
+uint8_t Car_PidInc_set_friction_ff(Car_PidInc_Struct *p, float dead_run,
+                                   float dead_start, float gain,
+                                   float decay_rpm)
+{
+    if (!number(dead_run) || !number(dead_start) ||
+        !number(gain) || !number(decay_rpm) ||
+        dead_run < 0.0f || dead_start < dead_run ||
+        dead_start > p->output_limit || gain < 0.0f || gain > 10000.0f ||
+        decay_rpm <= 0.0f)
+    {
+        return 0;
+    }
+
+    p->ff_dead_run = dead_run;
+    p->ff_dead_start = dead_start;
+    p->ff_gain = gain;
+    p->ff_decay_rpm = decay_rpm;
+    p->ff_model = 1;
+    return 1;
+}
+
+/*
  * 函数名称：Car_PidInc_update_dt
  * 函数功能：使用实际控制周期执行一次增量式 PID 计算，输出带符号 PWM 数值。
  * 参数说明：p            —— 增量式 PID 对象；
@@ -571,6 +672,13 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
     float delta;                                           /* 本拍输出增量 Δu */
     float unclamped;                                       /* 本拍未限幅递推输出 u[k] */
     float output;                                          /* 限幅后的最终输出 */
+    float speed_abs;                                       /* |target|，用于调度和死区前馈 */
+    float blend;                                           /* 低速调度混合：0=低速，1=高速 */
+    float kp_eff;                                          /* 本拍实际 Kp */
+    float ki_eff;                                          /* 本拍实际 Ki */
+    float ff_ratio;                                        /* |target| / 起步补偿衰减尺度 */
+    float ff_decay;                                        /* 起步补偿衰减因子，0..1 */
+    float ff_dead;                                         /* 本拍有效死区 PWM */
 
     if (p->fault)                                          /* 已锁存故障，保持输出为 0 */
     {
@@ -589,6 +697,43 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
 
     error = target - measure;                              /* 完整速度误差，rpm */
 
+    /*
+     * 低速增益调度：用目标转速（而不是实测转速）选择系数，避免堵转或
+     * 测速噪声反过来改变增益。low~high 之间线性过渡，过渡段不会跳变。
+     * 系数乘在基础 kp/ki 上；基础值仍由蓝牙命令 4 或 Flash 保存。
+     */
+    speed_abs = fabsf(target);
+    blend = 1.0f;
+    kp_eff = p->kp;
+    ki_eff = p->ki;
+    if (p->high_speed_rpm > p->low_speed_rpm)
+    {
+        blend = (speed_abs - p->low_speed_rpm) /
+                (p->high_speed_rpm - p->low_speed_rpm);
+        if (blend < 0.0f) blend = 0.0f;
+        if (blend > 1.0f) blend = 1.0f;
+        kp_eff = p->kp * (p->kp_scale_low +
+                          (1.0f - p->kp_scale_low) * blend);
+        ki_eff = p->ki * (p->ki_scale_low +
+                          (1.0f - p->ki_scale_low) * blend);
+    }
+
+    /*
+     * 积分分离：只在低速区、目标低于上限、误差进入带内时削弱积分。
+     * 不直接清零，保留温漂和负载偏置的慢速修正能力。
+     */
+    if (p->integral_band_rpm > 0.0f &&
+        (p->integral_speed_rpm <= 0.0f ||
+         speed_abs < p->integral_speed_rpm) &&
+        fabsf(error) < p->integral_band_rpm)
+    {
+        ki_eff *= p->integral_scale;
+    }
+
+    p->kp_effective = kp_eff;                              /* 调试：本拍实际 Kp */
+    p->ki_effective = ki_eff;                              /* 调试：本拍实际 Ki */
+    p->gain_blend = blend;                                 /* 调试：调度混合系数 */
+
     /* 与位置式一致：对测量值求导，首周期不计算差分，避免微分冲击。 */
     if (p->started)
     {
@@ -602,17 +747,46 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
     d_alpha = dt / (p->derivative_tau_s + dt);
     p->derivative += d_alpha * (raw_d - p->derivative);
 
-    p_term = p->kp * (p->beta * target - measure);         /* 比例项绝对项值 */
+    p_term = kp_eff * (p->beta * target - measure);        /* 比例项绝对项值 */
     d_term = -p->kd * 0.005f * p->derivative;              /* 微分项绝对项值 */
-    ff_term = p->kv * target + p->ka * acceleration;       /* 前馈项绝对项值 */
 
-    if (target > 1.0f)                                     /* 正转时叠加正向静摩擦补偿 */
+    if (p->ff_model && p->ff_decay_rpm > 0.0f)
     {
-        ff_term += p->ks;
+        /*
+         * 死区前馈：PWM = D_run + G×|rpm|；起步时 D_start 按
+         * 1 / (1 + (|rpm|/v0)²) 平滑衰减到 D_run。
+         * 零目标不输出前馈，避免停车时残留偏置。
+         */
+        ff_ratio = speed_abs / p->ff_decay_rpm;
+        ff_decay = 1.0f / (1.0f + ff_ratio * ff_ratio);
+        ff_dead = p->ff_dead_run +
+                  (p->ff_dead_start - p->ff_dead_run) * ff_decay;
+        if (target > 0.0f)
+        {
+            ff_term = ff_dead + p->ff_gain * speed_abs;
+        }
+        else if (target < 0.0f)
+        {
+            ff_term = -(ff_dead + p->ff_gain * speed_abs);
+        }
+        else
+        {
+            ff_term = 0.0f;
+        }
+        ff_term += p->ka * acceleration;
     }
-    else if (target < -1.0f)                               /* 反转时叠加负向静摩擦补偿 */
+    else
     {
-        ff_term -= p->ks;
+        ff_term = p->kv * target + p->ka * acceleration;   /* 旧模型：速度 + 加速度前馈 */
+
+        if (target > 1.0f)                                 /* 正转时叠加正向静摩擦补偿 */
+        {
+            ff_term += p->ks;
+        }
+        else if (target < -1.0f)                           /* 反转时叠加负向静摩擦补偿 */
+        {
+            ff_term -= p->ks;
+        }
     }
 
     base = p_term + d_term + ff_term;                      /* 本拍不含积分的绝对项 */
@@ -621,7 +795,7 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure,
      * 先按积分上限裁剪本拍积分候选值，再求“本拍接纳的积分增量”。
      * ΔI 只把变化量计入输出，积分项自身仍受 integral_limit 约束。
      */
-    integral_next = clip(p->integral + p->ki * error * (dt / 0.005f),
+    integral_next = clip(p->integral + ki_eff * error * (dt / 0.005f),
                          p->integral_limit);
     integral_step = integral_next - p->integral;
 

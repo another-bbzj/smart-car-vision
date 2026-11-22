@@ -163,6 +163,81 @@ static void test_incremental_matches_positional(void)
     }
 }
 
+static void test_incremental_low_speed_schedule(void)
+{
+    Car_PidInc_Struct p;
+    assert(Car_PidInc_init(&p, 10, 1, 0, 1000));
+    assert(Car_PidInc_set_low_speed(&p, 50, 100, 0.8f, 0.5f, 0, 1, 0));
+
+    (void)Car_PidInc_update(&p, 50, 50);      /* 调度起点：blend=0 */
+    check_incremental(p.kp_effective, 8.0f, "low-speed kp at start");
+    check_incremental(p.ki_effective, 0.5f, "low-speed ki at start");
+
+    (void)Car_PidInc_update(&p, 60, 60);      /* blend=0.2 */
+    check_incremental(p.kp_effective, 8.4f, "low-speed kp blend");
+    check_incremental(p.ki_effective, 0.6f, "low-speed ki blend");
+
+    (void)Car_PidInc_update(&p, 100, 100);    /* 调度终点：blend=1 */
+    check_incremental(p.kp_effective, 10.0f, "high-speed kp");
+    check_incremental(p.ki_effective, 1.0f, "high-speed ki");
+
+    (void)Car_PidInc_update(&p, 200, 200);    /* 高速不缩放 */
+    check_incremental(p.kp_effective, 10.0f, "above-high kp");
+    check_incremental(p.ki_effective, 1.0f, "above-high ki");
+
+    /* 非法端点不得覆盖原配置。 */
+    assert(!Car_PidInc_set_low_speed(&p, 100, 50, 0.8f, 0.5f, 0, 1, 0));
+    assert(p.low_speed_rpm == 50.0f && p.high_speed_rpm == 100.0f);
+}
+
+static void test_incremental_integral_separation(void)
+{
+    Car_PidInc_Struct p;
+    assert(Car_PidInc_init(&p, 0, 1, 0, 1000));
+    assert(Car_PidInc_set_low_speed(&p, 0, 0, 1, 1, 5, 0.3f, 100));
+
+    /* 目标 50、误差 2（<5）：Ki 缩放到 0.3，积分增量 = 0.3×2 = 0.6。 */
+    (void)Car_PidInc_update(&p, 50, 48);
+    check_incremental(p.ki_effective, 0.3f, "integral band ki scale");
+    check_incremental(p.integral, 0.6f, "integral band increment");
+
+    /* 误差 6（>5）：不再分离，积分增量 = 6。 */
+    (void)Car_PidInc_update(&p, 50, 44);
+    check_incremental(p.ki_effective, 1.0f, "outside band ki full");
+    check_incremental(p.integral, 6.6f, "outside band increment");
+
+    /* 目标 150（>100）：即使误差小也不分离。 */
+    (void)Car_PidInc_update(&p, 150, 150);
+    check_incremental(p.ki_effective, 1.0f, "above band speed ki full");
+
+    /* 非法缩放系数不得覆盖原配置。 */
+    assert(!Car_PidInc_set_low_speed(&p, 0, 0, 1, 1, 5, -0.1f, 100));
+    assert(p.integral_scale == 0.3f);
+}
+
+static void test_incremental_friction_ff(void)
+{
+    Car_PidInc_Struct p;
+    assert(Car_PidInc_init(&p, 0, 0, 0, 1000));
+    assert(Car_PidInc_set_friction_ff(&p, 200, 500, 10, 10));
+
+    /* 零目标：不输出前馈。 */
+    check_incremental(Car_PidInc_update(&p, 0, 0), 0, "ff zero target");
+
+    /* 10 rpm：ratio=1，decay=0.5，dead=350，ff=350+100=450。 */
+    check_incremental(Car_PidInc_update(&p, 10, 10), 450, "ff start region");
+
+    /* 60 rpm：ratio=6，decay=1/37，dead=208.108，ff=808.108。 */
+    check_incremental(Car_PidInc_update(&p, 60, 60), 808.11f, "ff run region");
+
+    /* 反向：符号对称。 */
+    check_incremental(Car_PidInc_update(&p, -60, -60), -808.11f, "ff reverse");
+
+    /* 断裂值小于运行死区：拒绝，保持旧配置。 */
+    assert(!Car_PidInc_set_friction_ff(&p, 500, 400, 10, 10));
+    assert(p.ff_dead_start == 500.0f);
+}
+
 int main(void)
 {
     Car_Pid_Struct a,b;
@@ -241,11 +316,14 @@ int main(void)
     test_incremental_terms_and_timing();
     test_incremental_periodic_no_drift();
     test_incremental_matches_positional();
+    test_incremental_low_speed_schedule();
+    test_incremental_integral_separation();
+    test_incremental_friction_ff();
     if (incremental_failures)
     {
         fprintf(stderr, "incremental PID: %u failed checks\n", incremental_failures);
         return 1;
     }
-    puts("advanced speed controller: all checks passed (including 7 incremental PID scenarios)");
+    puts("advanced speed controller: all checks passed (including 10 incremental PID scenarios)");
     return 0;
 }

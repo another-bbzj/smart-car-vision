@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import re
 import socket
 import shutil
 import subprocess
@@ -65,6 +66,35 @@ class ConsoleServerTests(unittest.TestCase):
                 self.assertNotEqual(server.server_port, busy.getsockname()[1])
             finally:
                 server.server_close()
+
+    def test_console_stable_recording_ui_is_complete(self):
+        html = (ROOT / 'Tools' / 'car_console.html').read_text(encoding='utf-8')
+        ids = re.findall(r'\bid="([^"]+)"', html)
+        self.assertEqual(len(ids), len(set(ids)), 'duplicate HTML ids')
+        for required in ('btnRecordStable', 'btnExportStable', 'btnClearStable',
+                         'btnExportL', 'btnExportR',
+                         'smoothCv', 'smoothPp', 'smoothPwm', 'autoRecord',
+                         'lStablePill', 'rStablePill', 'lStableMetrics', 'rStableMetrics',
+                         'stableBodyL', 'stableBodyR', 'lStableCount', 'rStableCount'):
+            self.assertIn(f'id="{required}"', html)
+        for symbol in ('function computeSmooth', 'function recordStablePoint',
+                       'function exportStableCsv', 'SMOOTH_WINDOW_MS',
+                       "exportStableCsv('L')", "exportStableCsv('R')"):
+            self.assertIn(symbol, html)
+
+    def test_console_inline_script_passes_node_check(self):
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('node is not installed')
+        html = (ROOT / 'Tools' / 'car_console.html').read_text(encoding='utf-8')
+        scripts = re.findall(r'<script>(.*?)</script>', html, re.S)
+        self.assertTrue(scripts)
+        with tempfile.TemporaryDirectory() as folder:
+            script = Path(folder) / 'console.js'
+            script.write_text('\n;\n'.join(scripts), encoding='utf-8')
+            result = subprocess.run([node, '--check', str(script)],
+                                    capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

@@ -127,32 +127,45 @@
 /* 允许的实测控制周期范围（微秒）；超出范围触发时序故障。 */
 #define CAR_MIN_CONTROL_US      1000U
 #define CAR_MAX_CONTROL_US      15000U
-/* 测速滑动窗口长度（控制周期数）。内环测速不再用单拍计数，而是对最近
- * CAR_SPEED_WINDOW_TICKS 拍的计数和时间求和：
+/* 测速滑动窗口长度（控制周期数）。内环测速对最近 CAR_SPEED_WINDOW_TICKS 拍
+ * 的计数和时间求和：
  *     转速 = 窗口计数和 × 60 / (CPR × 窗口时间和)
- * 5 ms 单拍时 1 个计数 = 27.3 rpm，PID 只能在这条 27 rpm 的台阶上工作；
- * 8 拍（40 ms）后 1 个计数 = 3.4 rpm，测速噪声下降约 8 倍。
- * 窗口越长分辨率越高，但测速延迟约为窗口的一半；调大时需同步复核增益。 */
-#define CAR_SPEED_WINDOW_TICKS  8U
+ * 5 ms 单拍时 1 个计数 = 27.3 rpm；8 拍（40 ms）后 1 个计数 = 3.4 rpm。
+ * 窗口越长分辨率越高，但测速延迟约为窗口的一半；调大时需同步复核增益。
+ * 2026-11-22：已移除自适应 8/16/32 拍窗口，恢复固定 8 拍，避免改变高速段
+ * 的环路动态；如以后重新启用，必须单独做 160 rpm 以上的稳定性验证。 */
+#define CAR_SPEED_WINDOW_TICKS  8U   /* 固定测速窗口拍数：8 拍 = 40 ms，1 count≈3.4 rpm */
 #if CAR_SPEED_WINDOW_TICKS < 1U || CAR_SPEED_WINDOW_TICKS > 32U
 #error CAR_SPEED_WINDOW_TICKS must be 1..32
 #endif
 /* 实测速度一阶低通时间常数（秒）。窗口已经滤掉大部分量化噪声，这里只做
  * 残余抑制；值越大越平滑，同时反馈延迟越大。 */
 #define CAR_SPEED_FILTER_TAU_S  0.015f
-/* 前馈系数须在本车辨识：Ks 为 PWM 数值，Kv 为 PWM/rpm，Ka 为 PWM/(rpm/s)。
- * 2026-11-18 第二轮开环阶跃（车轮架空、每档从静止起步）：
- *   左轮 5% 稳定 20.8 rpm，5.5% 30.0，6% 33.5，…，12% 87.4；
- *   右轮 5%/6% 不动，7% 仅 23.1 且会间歇卡住，8% 稳定 35.6。
- * 线性拟合：左轮死区约 2.3%、右轮约 4.1%，两轮增益都约 11 PWM/rpm。
- * Ks 取“从静止能稳定起步”的占空比，而不是运行死区：左 5%、右 8%。
- * 取大了会在低速目标起步时先冲出去（例：左 12% 对应约 87 rpm），
- * 取小了右轮会间歇不动。以 100 为步长微调，判据是 20 rpm 目标约 100 ms
- * 内起步，冲过头则回调。 */
-#define CAR_FF_KS_LEFT          500.0f   /* 5% PWM，左轮静摩擦前馈 */
-#define CAR_FF_KS_RIGHT         800.0f   /* 8% PWM，右轮静摩擦前馈 */
-#define CAR_FF_KV               0.0f
-#define CAR_FF_KA               0.0f
+/* 前馈模型：PWM = D_run + G×|rpm|；起步时 D_start 随 |rpm| 平滑衰减到 D_run。
+ * 2026-11-22 开环拟合（车轮架空、热态）：
+ *   右轮 PWM ≈ 247 + 10.93 × rpm，左轮 PWM ≈ 200 + 10.98 × rpm。
+ * D_start 取从静止能可靠起步的断裂值（左 500、右 800），而不是恒定 Ks；
+ * 恒定 Ks 会在 60 rpm 稳态时比实际需求高/低几百 PWM，迫使积分长期偏置。
+ * DECAY_RPM 越小，起步补偿衰减越快；建议 8~12 rpm 起调。 */
+#define CAR_FF_MODEL_ENABLE     0       /* 0=关闭死区前馈模型，回退旧 Ks/Kv；1=启用新模型 */
+#define CAR_FF_DEAD_RUN_LEFT    200.0f  /* 新模型左轮运行死区，单位 PWM（当前模型关闭，不生效） */
+#define CAR_FF_DEAD_RUN_RIGHT   247.0f  /* 新模型右轮运行死区，单位 PWM（当前模型关闭，不生效） */
+#define CAR_FF_DEAD_START_LEFT  500.0f  /* 新模型左轮起步断裂 PWM（当前模型关闭，不生效） */
+#define CAR_FF_DEAD_START_RIGHT 800.0f  /* 新模型右轮起步断裂 PWM（当前模型关闭，不生效） */
+#define CAR_FF_GAIN_LEFT        10.98f  /* 新模型左轮速度前馈，单位 PWM/rpm（当前模型关闭，不生效） */
+#define CAR_FF_GAIN_RIGHT       10.93f  /* 新模型右轮速度前馈，单位 PWM/rpm（当前模型关闭，不生效） */
+#define CAR_FF_DECAY_RPM        10.0f   /* 新模型起步补偿衰减尺度，单位 rpm（当前模型关闭，不生效） */
+/* 旧模型：CAR_FF_MODEL_ENABLE=0 时生效；已恢复为你改动前的 900/1200。
+ * Ks 是恒定静摩擦前馈，单位 PWM；它不随转速变化。 */
+#define CAR_FF_KS_LEFT          900.0f  /* 旧模型左轮恒定静摩擦前馈，单位 PWM */
+#define CAR_FF_KS_RIGHT         1200.0f /* 旧模型右轮恒定静摩擦前馈，单位 PWM */
+#define CAR_FF_KV               0.0f    /* 旧模型速度前馈，单位 PWM/rpm */
+#define CAR_FF_KA               0.0f    /* 旧模型加速度前馈，单位 PWM/(rpm/s) */
+#if CAR_FF_MODEL_ENABLE != 0 && CAR_FF_MODEL_ENABLE != 1
+#error CAR_FF_MODEL_ENABLE must be 0 or 1
+#endif
+/* 死区/增益/衰减是浮点数，预处理器不能比较；由 Car_PidInc_set_friction_ff
+ * 在 Car_Init / Car_SetPid 时逐项校验，非法会直接进入控制器故障。 */
 /* 微分测量低通时间常数（秒）；目标权重只影响比例项，1 表示使用完整目标。 */
 #define CAR_PID_D_TAU_S         0.020f
 #define CAR_PID_SETPOINT_WEIGHT 1.0f
@@ -169,6 +182,20 @@
 #define CAR_DEFAULT_KP         8.0f
 #define CAR_DEFAULT_KI         0.30f
 #define CAR_DEFAULT_KD         0.0f
+/* 低速增益调度：当前按要求回退，LOW=0、HIGH=0 表示完全关闭；
+ * Kp/Ki 系数保持 1.0，不做任何缩放。保留这些宏是为了以后可以重新启用，
+ * 启用时必须重新做 160 rpm 以上的高速稳定性验证。 */
+#define CAR_PID_LOW_SPEED_RPM    0.0f    /* 0=关闭低速调度；非 0 时是调度起点，单位 rpm */
+#define CAR_PID_HIGH_SPEED_RPM   0.0f    /* 0=关闭低速调度；非 0 时是调度终点，单位 rpm */
+#define CAR_PID_LOW_KP_SCALE     1.0f    /* 低速 Kp 缩放系数；1.0=不缩放 */
+#define CAR_PID_LOW_KI_SCALE     1.0f    /* 低速 Ki 缩放系数；1.0=不缩放 */
+/* 积分分离：唯一保留的低速改动。低速且 |error| < BAND 时，Ki 再乘 BAND_SCALE；
+ * 0 表示禁用误差带。缩放到 0.2~0.3 而不是 0，保留温漂/负载偏置修正能力。 */
+#define CAR_PID_I_BAND_RPM       5.0f    /* 积分分离误差带，单位 rpm */
+#define CAR_PID_I_BAND_SCALE     0.30f   /* 误差带内 Ki 缩放系数，0~1 */
+#define CAR_PID_I_BAND_SPEED_RPM 100.0f  /* 目标低于此值才启用积分分离 */
+/* 这些是浮点数，预处理器不能比较；由 Car_PidInc_set_low_speed 在
+ * Car_Init / Car_SetPid 时校验，非法会直接进入控制器故障。 */
 /* 串级 PID：外环位置环用位置式（Car_Pid_*），内环速度环用增量式
  * （Car_PidInc_*）。内环增益沿用上面的 CAR_DEFAULT_KP/KI/KD，蓝牙命令 4
  * 和板端 PID 菜单只写内环。

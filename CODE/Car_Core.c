@@ -34,14 +34,20 @@
  *   static float clamp(float x, float lim)
  *       —— 把浮点数限制到 [-lim, +lim]，用于目标转速限幅。
  *   static float wheel_ff_ks(unsigned wheel)
- *       —— 按左右轮返回各自的静摩擦前馈系数。
+ *       —— 旧模型：按左右轮返回静摩擦前馈系数。
+ *   static float wheel_ff_dead_run(unsigned wheel)
+ *       —— 死区前馈模型：按左右轮返回运行死区 PWM。
+ *   static float wheel_ff_dead_start(unsigned wheel)
+ *       —— 死区前馈模型：按左右轮返回起步断裂 PWM。
+ *   static float wheel_ff_gain(unsigned wheel)
+ *       —— 死区前馈模型：按左右轮返回 PWM/rpm 速度增益。
  *   static void speed_window_clear(Car_Core *c)
  *       —— 清空双轮测速滑动窗口，使下一次测速从空窗口开始。
  *   static void speed_window_push(Car_Core *c, unsigned i, int32_t counts,
  *                                 uint32_t dt_us)
  *       —— 把本拍编码器增量与周期写入指定车轮的滑动窗口。
  *   static float speed_window_rpm(const Car_Core *c, unsigned i)
- *       —— 用窗口计数和/时间和计算平均转速，抑制量化台阶。
+ *       —— 用固定 8 拍窗口的计数和/时间和计算平均转速，抑制量化台阶。
  *   static void reset_motion(Car_Core *c)
  *       —— 停止运动：清空规划器、目标、参考、位置、输出和保护计时。
  *   void Car_Init(Car_Core *c)
@@ -139,8 +145,27 @@ static float clamp(float x, float lim)
  */
 static float wheel_ff_ks(unsigned wheel)
 {
-    return wheel ? CAR_FF_KS_RIGHT : CAR_FF_KS_LEFT;
+    return wheel ? CAR_FF_KS_RIGHT : CAR_FF_KS_LEFT;   /* 旧模型：静摩擦前馈 PWM */
 }
+
+/* 死区前馈模型参数：运行死区、起步断裂值、速度增益，按轮号选择。
+ * 模型关闭时不编译，避免产生未使用函数的构建警告。 */
+#if CAR_FF_MODEL_ENABLE
+static float wheel_ff_dead_run(unsigned wheel)
+{
+    return wheel ? CAR_FF_DEAD_RUN_RIGHT : CAR_FF_DEAD_RUN_LEFT;
+}
+
+static float wheel_ff_dead_start(unsigned wheel)
+{
+    return wheel ? CAR_FF_DEAD_START_RIGHT : CAR_FF_DEAD_START_LEFT;
+}
+
+static float wheel_ff_gain(unsigned wheel)
+{
+    return wheel ? CAR_FF_GAIN_RIGHT : CAR_FF_GAIN_LEFT;
+}
+#endif
 
 /*
  * 函数名称：speed_window_clear
@@ -205,14 +230,14 @@ static void speed_window_push(Car_Core *c, unsigned i, int32_t counts,
 
 /*
  * 函数名称：speed_window_rpm
- * 函数功能：用滑动窗口内的计数和与时间和计算平均转速。
+ * 函数功能：用固定窗口内的计数和与时间和计算平均转速。
  * 参数说明：c —— 控制对象；
  *           i —— 轮号，0 左轮 / 1 右轮。
  * 返回参数：窗口平均转速，单位 rpm；窗口时间为 0 时返回 0。
  * 使用示例：
  *     raw = speed_window_rpm(c, i);
- * 备注信息：把有效拍数内的计数和一次性换算，等效于对窗口时间做平均，
- *           而不是先逐拍求速再平均，因此不会把量化误差再次放大。
+ * 备注信息：固定 CAR_SPEED_WINDOW_TICKS=8 拍（40 ms）；按实际已填拍数求和，
+ *           不把量化误差再次放大。2026-11-22 已移除自适应窗口。
  */
 static float speed_window_rpm(const Car_Core *c, unsigned i)
 {
@@ -343,6 +368,28 @@ void Car_Init(Car_Core *c)
             Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 配置失败立即进入故障 */
         }
 
+#if CAR_FF_MODEL_ENABLE
+        if (!Car_PidInc_set_friction_ff(&c->pid_speed[i],
+                                        wheel_ff_dead_run(i),
+                                        wheel_ff_dead_start(i),
+                                        wheel_ff_gain(i),
+                                        CAR_FF_DECAY_RPM))
+        {
+            Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 死区前馈配置失败 */
+        }
+#endif
+        if (!Car_PidInc_set_low_speed(&c->pid_speed[i],
+                                      CAR_PID_LOW_SPEED_RPM,
+                                      CAR_PID_HIGH_SPEED_RPM,
+                                      CAR_PID_LOW_KP_SCALE,
+                                      CAR_PID_LOW_KI_SCALE,
+                                      CAR_PID_I_BAND_RPM,
+                                      CAR_PID_I_BAND_SCALE,
+                                      CAR_PID_I_BAND_SPEED_RPM))
+        {
+            Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 低速调度配置失败 */
+        }
+
         /* 外环：位置式位置 PID，输出是内环转速给定，因此限幅用转速上限。
          * 默认增益全 0，只有 CAR_CASCADE_OUTER_ENABLE=1 时才参与控制。 */
         Car_Pid_init(&c->pid_position[i],
@@ -415,6 +462,27 @@ uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
     if (wheel > 1 || !Car_PidInc_init(&next, kp, ki, kd, CAR_PWM_LIMIT) ||
         !Car_PidInc_configure(&next, CAR_PID_SETPOINT_WEIGHT, CAR_PID_D_TAU_S,
                               1.0f, wheel_ff_ks(wheel), CAR_FF_KV, CAR_FF_KA))
+    {
+        return 2;
+    }
+#if CAR_FF_MODEL_ENABLE
+    if (!Car_PidInc_set_friction_ff(&next,
+                                    wheel_ff_dead_run(wheel),
+                                    wheel_ff_dead_start(wheel),
+                                    wheel_ff_gain(wheel),
+                                    CAR_FF_DECAY_RPM))
+    {
+        return 2;
+    }
+#endif
+    if (!Car_PidInc_set_low_speed(&next,
+                                  CAR_PID_LOW_SPEED_RPM,
+                                  CAR_PID_HIGH_SPEED_RPM,
+                                  CAR_PID_LOW_KP_SCALE,
+                                  CAR_PID_LOW_KI_SCALE,
+                                  CAR_PID_I_BAND_RPM,
+                                  CAR_PID_I_BAND_SCALE,
+                                  CAR_PID_I_BAND_SPEED_RPM))
     {
         return 2;
     }
