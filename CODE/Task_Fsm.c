@@ -400,6 +400,15 @@ void Car_Fault(Car_Core *c, uint8_t fault)
     c->parse_state = 0;           /* 丢弃未收完的蓝牙帧 */
 }
 
+/*
+ * 函数名称：Car_LocalStop
+ * 函数功能：本地停车：清目标/参考/输出、清故障码，回到 STOP。
+ * 参数说明：c —— 控制对象。
+ * 返回参数：无。
+ * 备注信息：与 Car_Fault 的区别——本函数清故障码，是“允许重新发车”的入口；
+ *           motion 一并回到 IDLE，之后蓝牙命令 3 或菜单发车才能重新取得目标来源。
+ *           link_us 清零，避免下次启动时立刻被通信看门狗判超时。
+ */
 void Car_LocalStop(Car_Core *c)
 {
     reset_motion(c);
@@ -409,6 +418,15 @@ void Car_LocalStop(Car_Core *c)
     c->link_us = 0;
 }
 
+/*
+ * 函数名称：Car_StartRace
+ * 函数功能：菜单/按键发车：STOP -> RUN，并把目标来源切到巡线。
+ * 参数说明：c —— 控制对象。
+ * 返回参数：1 发车成功；0 当前不在 STOP（例如故障未清或已在运行）。
+ * 备注信息：先 Car_LocalStop 再置 RACE，保证上一场的故障码、目标、测速窗口
+ *           全部清干净；发车后目标由 Track_Step 每拍写入 Car_RaceWheels。
+ *           本函数不启动电机，输出仍要等第一拍 Car_TickDt 才产生。
+ */
 int Car_StartRace(Car_Core *c)
 {
     if (c->state != CAR_STOP) return 0;
@@ -418,6 +436,21 @@ int Car_StartRace(Car_Core *c)
     return 1;
 }
 
+/*
+ * 函数名称：Car_SetPid
+ * 函数功能：改写指定轮的内环速度环增益（菜单与蓝牙命令 4 共用）。
+ * 参数说明：c     —— 控制对象；
+ *           wheel —— 轮号，0 左轮、1 右轮；
+ *           kp/ki/kd —— 新增益，单位沿用 5 ms 离散约定。
+ * 返回参数：0 成功；1 不是 STOP 状态；2 轮号或增益非法。
+ * 备注信息：参数传递上做了“先校验、后提交”：
+ *           1) 增益先写进临时对象 next，逐项过 Car_PidInc_init/configure/
+ *              set_low_speed 的数值检查（NaN、负数、上下界）；
+ *           2) 只要有一项不合法就返回 2，c->pid_speed[wheel] 保持原值，
+ *              不会出现“改了一半”的状态；
+ *           3) 全部通过才整体赋值，所以菜单里调坏参数最多是“这次不生效”。
+ *           外环位置环不开放蓝牙/菜单修改，这里只写 pid_speed。
+ */
 uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
 {
     Car_PidInc_Struct next;
@@ -453,6 +486,21 @@ uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
     return 0;
 }
 
+/*
+ * 函数名称：Car_SetOpenLoop
+ * 函数功能：进入开环 PWM 测试：绕过两个 PID，直接把 PWM 给指定轮。
+ * 参数说明：c     —— 控制对象；
+ *           wheel —— 0 左轮、1 右轮；
+ *           pwm   —— 带符号 PWM 数值，绝对值不超过 BT_OPENLOOP_PWM_LIMIT。
+ * 返回参数：0 成功；1 不是 RUN；2 轮号/PWM 非法或当前不允许切换。
+ * 备注信息：这是自动调参（命令 6）的专用通道，必须把车轮架空再用。
+ *           进入条件写得很严，原因都在代码注释里：
+ *           - 只允许 RUN；STOP 下应直接用命令 3 或菜单；
+ *           - pwm != pwm 用来一次性拦掉 NaN（NaN 与自身比较为假）；
+ *           - 首次进入要求双轮目标为 0 且实测 <10 rpm，防止行驶中硬切；
+ *           - 每次进入都会清掉双轮开环状态，保证“一次只测一轮”；
+ *           - 刷新命令会同步喂通信看门狗，超时则由 Car_TickDt 自动撤输出。
+ */
 uint8_t Car_SetOpenLoop(Car_Core *c, unsigned wheel, float pwm)
 {
     uint8_t entering;
@@ -496,6 +544,18 @@ uint8_t Car_SetOpenLoop(Car_Core *c, unsigned wheel, float pwm)
     return 0;
 }
 
+/*
+ * 函数名称：Car_RaceWheels
+ * 函数功能：巡线状态机每拍写入左右轮目标转速。
+ * 参数说明：c   —— 控制对象；
+ *           rpm —— 两个目标转速，单位 rpm，下标 0 左、1 右。
+ * 返回参数：无。
+ * 备注信息：只在“目标来源=RACE 且状态=RUN”时生效，其他时候直接返回：
+ *           这样即使巡线模块误调用，也不会在手动模式或停车时驱动车轮。
+ *           写入前按 BOARD_RPM_LIMIT 限幅，超限的视觉指令不会整条丢掉，
+ *           而是等比压到上限；双轮都为 0 时顺手清空运动状态并复位 PID，
+ *           避免停车瞬间积分残留。link_us 清零表示“这一拍有有效指令”。
+ */
 void Car_RaceWheels(Car_Core *c, const float rpm[2])
 {
     if (c->motion != CAR_MOTION_RACE || c->state != CAR_RUN) return;
@@ -504,11 +564,6 @@ void Car_RaceWheels(Car_Core *c, const float rpm[2])
     if (rpm[0] == 0 && rpm[1] == 0) reset_motion(c);
     c->link_us = 0;
 }
-
-/* ========================================================================== */
-/*                              蓝牙协议解析                                   */
-/* ========================================================================== */
-
 
 /*
  * 函数名称：Car_TickDt

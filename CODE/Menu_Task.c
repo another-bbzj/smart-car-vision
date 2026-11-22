@@ -40,6 +40,24 @@ static const char *const conditions[] = {"Ready", "Stop / clear fault first", "W
 static const char *const phases[] = {"Track","Gap","Bypass","Red stop","Finish","Fault"};
 enum { FB_NONE, FB_APPLIED, FB_STOP, FB_INVALID };
 
+/*
+ * 函数名称：Menu_StartCondition
+ * 函数功能：判断“现在能不能发车”，返回具体原因供菜单显示。
+ * 参数说明：car              —— 控制对象，只用 state 判断是否停车；
+ *           still            —— 轮速是否近似为零（由平台层用 speed[] 判定）；
+ *           pending          —— 是否正在准备数独结果（完赛收尾期间禁止新车）；
+ *           road             —— 最新道路观测，NULL 表示本拍没有可用视觉帧；
+ *           previous_session —— 上一场比赛绑定的视觉会话号。
+ * 返回参数：发车条件枚举，只有 START_READY 才允许按 OK 发车。
+ * 备注信息：判断顺序即优先级，不能随意交换：
+ *           1) 非 STOP -> 先停车/清故障；
+ *           2) 车还在动 -> 等停稳；
+ *           3) 正在算数独 -> 等结果；
+ *           4) 没有视觉帧、曲率无效或置信度 <0.35 -> 等有效路况；
+ *           5) 视觉会话号与上一场相同 -> 视觉端没重新开始，要求重启会话；
+ *           全部通过才 READY。这样发车瞬间一定“停稳 + 有路 + 新会话”，
+ *           避免一按 OK 就冲到上一场的旧曲率上。
+ */
 StartCondition Menu_StartCondition(const Car_Core *car, uint8_t still, uint8_t pending, const CarVisionObservation *road, uint32_t previous_session)
 {
     if (car->state != CAR_STOP) return START_STOP_FIRST;
@@ -51,6 +69,14 @@ StartCondition Menu_StartCondition(const Car_Core *car, uint8_t still, uint8_t p
     return START_READY;
 }
 
+/*
+ * 函数名称：items
+ * 函数功能：按分组返回该组的菜单项文字表。
+ * 参数说明：group —— 菜单组，取值见 MenuGroup。
+ * 返回参数：指向字符串数组的指针，数组长度由调用方按组判断（3 或 4 项）。
+ * 备注信息：菜单项文字集中在这里，绘制与按键逻辑都通过本函数取，
+ *           避免两处各写一份字符串导致“显示的和实际执行的不是同一项”。
+ */
 static const char *const *items(unsigned group)
 {
     if (group == MENU_RACE) return race_items;
@@ -58,6 +84,23 @@ static const char *const *items(unsigned group)
     return gain_names;
 }
 
+/*
+ * 函数名称：Menu_Key
+ * 函数功能：处理一个按键事件，推进光标或修改/应用增益，返回要执行的动作。
+ * 参数说明：m     —— 菜单状态（层级 depth、组 group、各组光标 item[]、编辑候选值）；
+ *           key   —— 按键事件（键号 + 按下/连发）；
+ *           car   —— 控制对象，应用增益与判断状态时读写；
+ *           start —— 当前发车条件，只有 READY 才允许发车。
+ * 返回参数：MENU_IDLE 什么也不做；MENU_LAUNCH 请求平台发车；
+ *           MENU_SAVE_PARAMS 请求平台写 Flash 保存参数。
+ * 备注信息：三级导航：
+ *           第 0 级选组（循环上下）；第 1 级选组内项；第 2 级是“值/动作”。
+ *           增益编辑用“放大 100 倍的整数”存候选值（candidate）：
+ *             - 单位与蓝牙命令 4 的编码一致（float×100 -> uint16）；
+ *             - 连发一次 ±10（0.10），单按一次 ±1（0.01），避免浮点累加误差；
+ *             - 只有按 OK 才真正调用 Car_SetPid，按 BACK 直接丢弃候选值。
+ *           本函数不写 Flash、不启动电机，只返回“要做什么”，副作用集中在平台层。
+ */
 MenuAction Menu_Key(MenuState *m, Key_Event_Struct key, Car_Core *car, StartCondition start)
 {
     uint8_t *cursor = m->depth == 0 ? &m->group : &m->item[m->group];
@@ -96,11 +139,14 @@ MenuAction Menu_Key(MenuState *m, Key_Event_Struct key, Car_Core *car, StartCond
                 return MENU_SAVE_PARAMS;
             }
         } else if (pid) {
+            /* 第 2 级第 0..2 项：按 OK 把候选值写进内环。wheel 由“当前组”换算：
+             * MENU_LEFT_PID -> 0、MENU_RIGHT_PID -> 1；外环不开放。 */
             unsigned wheel = m->group - MENU_LEFT_PID;
             Car_PidInc_Struct *p = &car->pid_speed[wheel];
             float gains[] = {p->kp,p->ki,p->kd};
             uint8_t result;
             gains[item] = m->candidate / 100.0f;
+            /* 先组装完整增益再一次性提交；失败只影响本次，不破坏已生效参数。 */
             result = Car_SetPid(car,wheel,gains[0],gains[1],gains[2]);
             m->feedback = result == 0 ? FB_APPLIED : (result == 1 ? FB_STOP : FB_INVALID);
         } else if (m->group == MENU_RACE && item == 0 && start == START_READY) {
@@ -111,6 +157,14 @@ MenuAction Menu_Key(MenuState *m, Key_Event_Struct key, Car_Core *car, StartCond
     return MENU_IDLE;
 }
 
+/*
+ * 函数名称：Menu_ShowResult
+ * 函数功能：把菜单位置跳到 “Race -> Sudoku result” 页。
+ * 参数说明：m —— 菜单状态。
+ * 返回参数：无。
+ * 备注信息：完赛或求解完成时调用；直接把 depth 设成 2、组设为 RACE、项设为 2，
+ *           用户不用再手动翻页。feedback 清零，避免上一次的“已应用”提示残留。
+ */
 void Menu_ShowResult(MenuState *m)
 {
     m->depth = 2;
@@ -119,6 +173,21 @@ void Menu_ShowResult(MenuState *m)
     m->feedback = FB_NONE;
 }
 
+/*
+ * 函数名称：Menu_DrawRow
+ * 函数功能：按当前快照画第 row 行（0..9）。
+ * 参数说明：v      —— 一屏数据快照，平台层在临界区一次性填好；
+ *           row    —— 行号 0..9；
+ *           board  —— 数独答案（36 格），结果页使用；
+ *           result —— 数独求解状态，决定结果页显示“进度”还是“答案”。
+ * 返回参数：无。
+ * 备注信息：行布局：
+ *             0 标题；1 项目名；2..7 内容（不同页面含义不同）；
+ *             8 状态栏（STOP/FAULT/RACE/MANUAL + 故障码 + 视觉丢失提示）；
+ *             9 操作提示（PE10 急停 / UP-DN 移动 / OK 进入 / BACK 返回）。
+ *           只读快照，不访问控制对象，所以主循环刷新菜单不会和控制中断抢数据。
+ *           最后一行统一交给 Lcd_Print，由驱动做“逐字符比较、只重画变化部分”。
+ */
 void Menu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], uint8_t result)
 {
     const MenuState *m = &v->menu;
