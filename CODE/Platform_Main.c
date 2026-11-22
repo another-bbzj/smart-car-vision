@@ -389,9 +389,12 @@ static void poll_params(void)
     Motor_Apply(1, 0);
     __set_PRIMASK(mask);
 
-    /* 前台执行：保留中断以便 HAL 超时；PIT 已被上方条件挡住。 */
+    /* 前台执行：保留中断以便 HAL 超时；PIT 已被上方条件挡住；
+     * 串口入队暂停，避免把 Flash 阻塞期间堆积的字节当成命令。 */
+    Uart_Gate(1);
     Lcd_Print(3, UI_STYLE_WARN, "Saving... keep power on");
     status = CarParams_FlashSave(&current);
+    Uart_Gate(0);
 
     mask = __get_PRIMASK();
     __disable_irq();
