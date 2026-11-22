@@ -98,16 +98,40 @@ static float wheel_ff_ks(unsigned wheel)
 /* 死区前馈模型参数：运行死区、起步断裂值、速度增益，按轮号选择。
  * 模型关闭时不编译，避免产生未使用函数的构建警告。 */
 #if PID_FF_MODEL_ENABLE
+/*
+ * 函数名称：wheel_ff_dead_run
+ * 函数功能：按轮号取“死区前馈模型”的运行死区（PWM）。
+ * 参数说明：wheel —— 0 左轮、1 右轮。
+ * 返回参数：对应轮的运行死区，单位 PWM 数值。
+ * 备注信息：两轮机械差异明显（左轮摩擦大、右轮小），必须按轮分别取值；
+ *           只在 PID_FF_MODEL_ENABLE=1 时编译。
+ */
 static float wheel_ff_dead_run(unsigned wheel)
 {
     return wheel ? PID_FF_DEAD_RUN_RIGHT : PID_FF_DEAD_RUN_LEFT;
 }
 
+/*
+ * 函数名称：wheel_ff_dead_start
+ * 函数功能：按轮号取“从静止可靠起步”的断裂 PWM。
+ * 参数说明：wheel —— 0 左轮、1 右轮。
+ * 返回参数：起步断裂值，单位 PWM 数值。
+ * 备注信息：取实测“刚好能转起来”的值，比运行死区大；它随转速平滑衰减到
+ *           wheel_ff_dead_run()，所以只影响起步段，不影响稳态。
+ */
 static float wheel_ff_dead_start(unsigned wheel)
 {
     return wheel ? PID_FF_DEAD_START_RIGHT : PID_FF_DEAD_START_LEFT;
 }
 
+/*
+ * 函数名称：wheel_ff_gain
+ * 函数功能：按轮号取速度前馈增益（PWM/rpm）。
+ * 参数说明：wheel —— 0 左轮、1 右轮。
+ * 返回参数：速度前馈增益，单位 PWM/rpm。
+ * 备注信息：来自开环拟合的斜率，反映“每多 1 rpm 需要多少 PWM”；
+ *           两轮分开取，避免共用一个增益导致左右轮加速不一致。
+ */
 static float wheel_ff_gain(unsigned wheel)
 {
     return wheel ? PID_FF_GAIN_RIGHT : PID_FF_GAIN_LEFT;
