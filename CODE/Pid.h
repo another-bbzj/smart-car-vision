@@ -12,7 +12,8 @@
  *
  *   第二层 增量式 PID（Car_PidInc_*）—— 内环速度环
  *     Δu = Kp·Δe + Ki·e + Kd·Δ²e，带低通微分、抗饱和、低速增益调度、
- *     积分分离、可标定静摩擦/速度前馈、数值合法性检查、跳变重锚定。
+ *     近设定点软化、大误差积分冻结、可标定静摩擦/速度前馈、
+ *     数值合法性检查、跳变重锚定。
  *
  *   两层之间的约定
  *     5 ms 离散增益；内环输出直接是带符号 PWM 数值（±BOARD_PWM_LIMIT），
@@ -60,14 +61,25 @@
 #define PID_LOW_KI_SCALE         1.0f     /* 低速段 Ki 缩放系数 */
 
 /* ---------------------------------------------------------------------------
- * 积分分离
- * 功能：目标低于阈值且 |误差| 小于带宽时，Ki 再乘 BAND_SCALE，避免低速
- *       长时间积分造成过冲；保留 0.2~0.3 而不是 0，仍能修正温漂与负载偏置。
- * 取值：带宽 5 rpm、系数 0.30、启用转速阈值 100 rpm。
+ * 近设定点软化（原积分分离）
+ * 功能：|误差| 从 0 增大到 BAND_RPM 时，Ki 从 BAND_SCALE 倍平滑升到 1 倍，
+ *       没有硬边界；带外保持完整积分，负载残差仍能修正。
+ * 取值：带宽 10 rpm（约 3 个 40 ms 窗口计数）、最低 0.30 倍、不限目标速度。
  * ------------------------------------------------------------------------- */
-#define PID_I_BAND_RPM           5.0f     /* 积分分离误差带，单位 rpm */
-#define PID_I_BAND_SCALE         0.30f    /* 误差带内 Ki 缩放系数，0~1 */
-#define PID_I_BAND_SPEED_RPM     100.0f   /* 目标低于此值才启用积分分离，单位 rpm */
+#define PID_I_BAND_RPM           10.0f    /* 软化带，单位 rpm */
+#define PID_I_BAND_SCALE         0.30f    /* 带内最低 Ki 倍数，0~1，不到 0 */
+#define PID_I_BAND_SPEED_RPM     0.0f     /* 0=所有目标速度都参与软化 */
+
+/* ---------------------------------------------------------------------------
+ * 大误差积分关闭（滞回）
+ * 功能：|误差| 超过 CUT_IN 时冻结积分（Ki=0），避免起步/阶跃前积累过多；
+ *       回到 CUT_OUT 以内自动恢复。只冻结积分，P/D/FF 照常响应。
+ * 取值：进 60 rpm、出 40 rpm（约 6 个窗口计数的滞回），0 表示禁用。
+ * 用法：由 Car_PidInc_set_integral_cut 在初始化/改增益时写入对象，
+ *       默认 0（禁用），因此不改变 PID 模块的默认行为和等价性测试。
+ * ------------------------------------------------------------------------- */
+#define PID_I_CUT_IN_RPM         60.0f    /* |误差| 大于此值：冻结积分 */
+#define PID_I_CUT_OUT_RPM        40.0f    /* |误差| 小于此值：恢复积分 */
 
 /* ---------------------------------------------------------------------------
  * 外环（位置式）开关与占位增益
@@ -85,16 +97,17 @@
 #define PID_POS_DEFAULT_KP       0.0f     /* 外环比例增益，单位 rpm/圈 */
 #define PID_POS_DEFAULT_KI       0.0f     /* 外环积分增益，单位 rpm/(圈·拍) */
 #define PID_POS_DEFAULT_KD       0.0f     /* 外环微分增益，单位 rpm/(圈/拍) */
+#define PID_POS_I_FRACTION       0.2f     /* 外环积分上限比例：0.2 × BOARD_RPM_LIMIT */
 
 /* ---------------------------------------------------------------------------
  * 前馈模型
  * 功能：给内环叠加“静摩擦 + 速度”前馈，减小积分长期偏置。
  * 取值：MODEL_ENABLE=0 时用旧模型（恒定 Ks）；1 时用死区模型（D_run + G×rpm，
- *       起步补偿 D_start 随转速衰减）。当前关闭新模型。
+ *       起步补偿 D_start 随转速衰减）。当前启用死区模型（2026-11-23）。
  * 注意：这些都是浮点数，预处理器不能比较，由 Car_PidInc_set_friction_ff
  *       在初始化时逐项校验，非法直接进控制器故障。
  * ------------------------------------------------------------------------- */
-#define PID_FF_MODEL_ENABLE      0        /* 0=旧 Ks/Kv 模型；1=死区前馈模型 */
+#define PID_FF_MODEL_ENABLE      1        /* 0=旧 Ks/Kv 模型；1=死区前馈模型 */
 #define PID_FF_DEAD_RUN_LEFT     200.0f   /* 新模型左轮运行死区，单位 PWM */
 #define PID_FF_DEAD_RUN_RIGHT    247.0f   /* 新模型右轮运行死区，单位 PWM */
 #define PID_FF_DEAD_START_LEFT   500.0f   /* 新模型左轮起步断裂 PWM */
@@ -292,14 +305,16 @@ typedef struct
     float kv;               /* 旧模型速度前馈系数，单位 PWM/rpm */
     float ka;               /* 加速度前馈系数，单位 PWM/(rpm/s) */
 
-    /* ---------- 低速增益调度 / 积分分离 / 死区前馈 ---------- */
+    /* ---------- 低速增益调度 / 近设定点软化 / 大误差冻结 / 死区前馈 ---------- */
     float low_speed_rpm;       /* 低速调度起点，0 表示禁用；单位 rpm */
     float high_speed_rpm;      /* 低速调度终点；单位 rpm */
     float kp_scale_low;        /* 低速 Kp 缩放系数，0~1 */
     float ki_scale_low;        /* 低速 Ki 缩放系数，0~1 */
-    float integral_band_rpm;   /* 积分分离误差带，0 表示禁用；单位 rpm */
-    float integral_scale;      /* 误差带内 Ki 缩放系数，0~1 */
-    float integral_speed_rpm;  /* 目标低于此值才启用积分分离；单位 rpm */
+    float integral_band_rpm;   /* 近设定点软化带，0 表示禁用；单位 rpm */
+    float integral_scale;      /* 软化带内最低 Ki 倍数，0~1 */
+    float integral_speed_rpm;  /* 目标低于此值才启用软化，0=不限；单位 rpm */
+    float integral_cut_in_rpm; /* 大误差冻结进入阈值，0 表示禁用；单位 rpm */
+    float integral_cut_out_rpm;/* 大误差冻结退出阈值；单位 rpm */
     float ff_dead_run;         /* 死区模型运行死区，单位 PWM */
     float ff_dead_start;       /* 死区模型起步断裂值，单位 PWM */
     float ff_gain;             /* 死区模型速度前馈，单位 PWM/rpm */
@@ -313,14 +328,15 @@ typedef struct
     float ff_term;      /* 本周期前馈项值，单位 PWM */
     float delta;        /* 本周期输出增量 Δu，单位 PWM */
     float kp_effective; /* 本拍实际 Kp = 基础 Kp × 低速调度系数 */
-    float ki_effective; /* 本拍实际 Ki = 基础 Ki × 调度 × 积分分离系数 */
+    float ki_effective; /* 本拍实际 Ki = 基础 Ki × 调度 × 软化系数（冻结时为 0） */
     float gain_blend;   /* 低速调度混合：0=低速系数，1=高速系数 */
 
     /* ---------- 状态标志 ---------- */
     uint8_t started;    /* 1 表示已有上一周期测量值，可以计算微分 */
     uint8_t fault;      /* 1 表示数值异常已锁存故障，update 将返回 0 */
     uint8_t saturated;  /* 1 表示最近一次输出被限幅 */
-    uint8_t reanchor;   /* 递推重锚计数，每 8 拍用绝对项修正一次浮点漂移 */
+    uint8_t reanchor;   /* 递推重锚计数，每 100 拍用绝对项修正一次浮点漂移 */
+    uint8_t integral_hold; /* 1 = 大误差期间冻结积分（60/40 rpm 滞回） */
 } Car_PidInc_Struct;
 
 /**
@@ -349,19 +365,29 @@ uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd, floa
 uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float derivative_tau_s, float integral_fraction, float ks, float kv, float ka);
 
 /**
- * @brief 配置低速增益调度和积分分离；不清除积分/P/FF 历史。
+ * @brief 配置低速增益调度和近设定点软化；不清除积分/P/FF 历史。
  * @param p              增量式 PID 对象。
  * @param low_speed_rpm  低速调度起点（rpm），0 表示禁用调度。
  * @param high_speed_rpm 高速调度终点（rpm），必须大于 low_speed_rpm。
  * @param kp_scale_low   低速 Kp 缩放系数，(0, 1]。
  * @param ki_scale_low   低速 Ki 缩放系数，(0, 1]。
- * @param band_rpm       积分分离误差带（rpm），0 表示禁用。
- * @param band_scale     误差带内 Ki 缩放系数，[0, 1]。
- * @param band_speed_rpm 仅在目标低于此值时启用积分分离（rpm）。
+ * @param band_rpm       近设定点软化带（rpm），0 表示禁用。
+ * @param band_scale     软化带内最低 Ki 倍数，[0, 1]。
+ * @param band_speed_rpm 仅在目标低于此值时启用软化（rpm），0=不限。
  * @return 1 成功；0 参数无效，保留原配置。
  * @note 调度的系数乘在 kp/ki 基础增益上；基础增益仍由 init/蓝牙命令 4 决定。
  */
 uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm, float high_speed_rpm, float kp_scale_low, float ki_scale_low, float band_rpm, float band_scale, float band_speed_rpm);
+
+/**
+ * @brief 配置大误差积分冻结（滞回）：|误差| > in 冻结，< out 恢复。
+ * @param p        增量式 PID 对象。
+ * @param in_rpm   进入阈值（rpm），必须 > out_rpm；0 表示禁用。
+ * @param out_rpm  退出阈值（rpm），>= 0。
+ * @return 1 成功并清除冻结状态；0 参数无效，保留原配置。
+ * @note 只冻结积分，P/D/FF 照常响应；与条件抗饱和、近设定点软化独立。
+ */
+uint8_t Car_PidInc_set_integral_cut(Car_PidInc_Struct *p, float in_rpm, float out_rpm);
 
 /**
  * @brief 配置死区前馈模型：PWM = dead_run + gain×|rpm|，起步时 dead_start 衰减。

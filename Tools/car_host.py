@@ -15,7 +15,8 @@ import time
 TAIL = bytes.fromhex('00 00 80 7f')
 CHANNELS = ['state', 'fault', 'left_ref', 'left_rpm', 'right_ref', 'right_rpm',
             'left_pwm', 'right_pwm', 'result', 'frames',
-            'left_kp', 'left_ki', 'left_kd', 'right_kp', 'right_ki', 'right_kd']
+            'left_kp', 'left_ki', 'left_kd', 'right_kp', 'right_ki', 'right_kd',
+            'left_pos', 'right_pos']
 FAULTS = {0: '正常', 1: '通信超时', 2: '堵转/编码器无反馈', 3: '反馈方向异常', 4: '串口错误/溢出',
           5: '控制周期异常', 6: '控制器参数/数值异常', 7: '比赛故障', 8: '测得转速过高'}
 
@@ -70,22 +71,52 @@ def mix(forward, turn_left, rpm):
 
 
 class TelemetryReader:
+    """打包二进制遥测：A5 快帧（左右 rpm + 状态，100 Hz）、
+    A6 慢帧（左右位置 + 状态，20 Hz）。"""
+
+    FAST = 0xA5
+    SLOW = 0xA6
+    LENGTH = 7
+
     def __init__(self):
         self.buffer = b''
+        self.count = 0
+        self.last_slow = (0.0, 0.0)
 
     def feed(self, data):
         self.buffer += data
         frames = []
-        while True:
-            index = self.buffer.find(TAIL)
-            if index < 0:
-                self.buffer = self.buffer[-67:]
-                return frames
-            chunk, self.buffer = self.buffer[:index], self.buffer[index + 4:]
-            if len(chunk) >= 64:
-                values = struct.unpack('<16f', chunk[-64:])
-                if all(math.isfinite(x) for x in values) and values[0] in (0, 1, 2):
-                    frames.append(values)
+        while len(self.buffer) >= self.LENGTH:
+            if self.buffer[0] not in (self.FAST, self.SLOW):
+                self.buffer = self.buffer[1:]
+                continue
+            chunk = self.buffer[:self.LENGTH]
+            checksum = 0
+            for value in chunk[:self.LENGTH - 1]:
+                checksum ^= value
+            if checksum != chunk[-1]:
+                self.buffer = self.buffer[1:]
+                continue
+            self.buffer = self.buffer[self.LENGTH:]
+            state = chunk[5]
+            if state > 2:
+                continue
+            if chunk[0] == self.FAST:
+                left, right = struct.unpack('>hh', chunk[1:5])
+                self.count += 1
+                frames.append(self._sample(state, left, right))
+            else:
+                lpos, rpos = struct.unpack('>hh', chunk[1:5])
+                self.last_slow = (lpos / 100.0, rpos / 100.0)
+        if len(self.buffer) > 4096:
+            self.buffer = b''
+        return frames
+
+    def _sample(self, state, left, right):
+        # 兼容旧界面的 18 元素数组；目标、增益由 Console 覆盖，无故障码/结果/PWM。
+        lpos, rpos = self.last_slow
+        return [state, 0, 0, left, 0, right, 0, 0, -1, self.count,
+                0, 0, 0, 0, 0, 0, lpos, rpos]
 
 
 class Console:
@@ -104,6 +135,8 @@ class Console:
         self.last_rx = 0
         self.next_tx = 0
         self.sample = None
+        self.target = [0, 0]
+        self.local_gains = [[8.0, 0.3, 0.0], [8.0, 0.3, 0.0]]
         self.log_file = None
         root.title('NEUQ 双电机蓝牙调试 · 前万向轮底盘')
         root.geometry('780x610')
@@ -205,6 +238,7 @@ class Console:
         self.armed = self.pending_arm = False
         self.stop_retries = 0
         self.keys.clear()
+        self.target = [0, 0]
         if self.port:
             port, self.port = self.port, None
             try:
@@ -222,12 +256,14 @@ class Console:
             self.status.set('请先连接并收到停止状态；故障时先按停止。')
             return
         self.keys.clear()
+        self.target = [0, 0]
         if self.send(packet(1)):
             self.pending_arm = True
 
     def stop(self):
         self.armed = self.pending_arm = False
         self.keys.clear()
+        self.target = [0, 0]
         self.send(packet(2))
         # A STOP can land inside a truncated payload. Wait beyond the firmware's
         # 100ms inter-byte timeout, then send complete STOP frames again.
@@ -244,6 +280,10 @@ class Console:
             self.status.set(str(exc))
             return
         self.send(data)
+        try:
+            self.local_gains[wheel] = [float(entry.get()) for entry in self.pid_entries[wheel]]
+        except (ValueError, self.tk.TclError):
+            pass
 
     def set_key(self, key, pressed):
         if pressed and not self.armed:
@@ -286,8 +326,10 @@ class Console:
             if not 20 <= rpm <= 900:
                 raise ValueError()
             forward = int('w' in self.keys) - int('s' in self.keys)
-            left = int('a' in self.keys) - int('d' in self.keys)
-            self.send(wheels(*mix(forward, left, rpm)))
+            turn = int('a' in self.keys) - int('d' in self.keys)
+            left, right = mix(forward, turn, rpm)
+            self.target = [left, right]
+            self.send(wheels(left, right))
         except (ValueError, self.tk.TclError):
             self.stop()
             self.status.set('速度必须为 20~900 的整数 rpm')
@@ -304,8 +346,11 @@ class Console:
                         return
                 data = self.port.read(min(self.port.in_waiting, 4096))
                 for sample in self.reader.feed(data):
+                    sample[2], sample[4] = self.target
+                    sample[10:13] = self.local_gains[0]
+                    sample[13:16] = self.local_gains[1]
                     self.sample, self.last_rx = sample, now
-                    state, fault = int(sample[0]), int(sample[1])
+                    state = int(sample[0])
                     if state == 1 and self.pending_arm:
                         self.armed, self.pending_arm = True, False
                     elif state != 1:
@@ -313,9 +358,13 @@ class Console:
                         self.keys.clear()
                         if state == 2:
                             self.pending_arm = False
-                    self.status.set(f'状态：{["停止", "运行", "故障"][state]}　{FAULTS.get(fault, "未知故障")}　指令结果：{int(sample[8])}　有效帧：{int(sample[9])}')
-                    self.values.set(f'左轮 目标 {sample[2]:6.1f} / 实测 {sample[3]:6.1f} rpm  PWM {sample[6]:6.1f}%\n右轮 目标 {sample[4]:6.1f} / 实测 {sample[5]:6.1f} rpm  PWM {sample[7]:6.1f}%')
-                    self.actual_pid.set('实际内环 PID：左 %.2f / %.2f / %.2f　右 %.2f / %.2f / %.2f' % tuple(sample[10:16]))
+                    self.status.set(f'状态：{["停止", "运行", "故障"][state]}　有效帧：{int(sample[9])}')
+                    self.values.set(
+                        f'左轮 目标 {sample[2]:6.1f} / 实测 {sample[3]:6.1f} rpm　位置 {sample[16]:6.2f} rev\n'
+                        f'右轮 目标 {sample[4]:6.1f} / 实测 {sample[5]:6.1f} rpm　位置 {sample[17]:6.2f} rev')
+                    self.actual_pid.set(
+                        '内环 PID（本地写入）：左 %.2f / %.2f / %.2f　右 %.2f / %.2f / %.2f'
+                        % tuple(sample[10:16]))
                     if self.log_file:
                         self.csv.writerow([time.time()] + list(sample))
                 if now - self.last_rx > 0.35 and (self.armed or self.pending_arm):

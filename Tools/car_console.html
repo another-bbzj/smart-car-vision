@@ -231,6 +231,7 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
     <div><h1>蓝牙差速车调试台</h1><p>CAR LAB / 调试工作台</p></div>
   </div>
   <div class="conn">
+    <span class="pill on" title="页面协议版本">A5/A6 · 100 Hz</span>
     <span class="port" id="portLabel">未选择串口</span>
     <select class="btn baud" id="baudSel" title="波特率，必须与蓝牙模块和固件一致">
       <option value="9600" selected>9600</option>
@@ -314,22 +315,34 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
       </div>
 
       <div class="pid-panel" id="pidOuterPanel" role="tabpanel" aria-labelledby="tabOuter" hidden>
-        <div class="pid-disabled-note">外环当前未开放调参：<code>CAR_CASCADE_OUTER_ENABLE=0</code>，蓝牙命令 4 和遥测只针对内环；位置环被控对象是 rpm→位置（积分型）。启用外环需要新增位置目标/反馈协议，并改用积分型整定法。</div>
+        <div class="pid-disabled-note">外环已开放：命令 8 写增益，命令 7 运行时开关；位置环对象是 rpm→位置（积分型）。建议先用内环结果计算，再启用做位置阶跃验证。车轮必须架空。</div>
         <div class="pid-wheel">
-          <div class="pid-wheel-head"><b>左轮</b><span>位置式 · 未开放</span></div>
-          <div class="pid-row"><label for="okp0">Kp</label><input type="number" id="okp0" value="0" disabled><input type="range" id="okp0Range" min="0" max="20" step="0.01" value="0" disabled aria-label="左轮外环 Kp 滑块"></div>
-          <div class="pid-row"><label for="oki0">Ki</label><input type="number" id="oki0" value="0" disabled><input type="range" id="oki0Range" min="0" max="2" step="0.01" value="0" disabled aria-label="左轮外环 Ki 滑块"></div>
-          <div class="pid-row"><label for="okd0">Kd</label><input type="number" id="okd0" value="0" disabled><input type="range" id="okd0Range" min="0" max="2" step="0.01" value="0" disabled aria-label="左轮外环 Kd 滑块"></div>
+          <div class="pid-wheel-head"><b>左轮</b><span>位置式 · rpm/rev</span><button class="btn small" data-outerpid="0">写入</button></div>
+          <div class="pid-row"><label for="okp0">Kp</label><input type="number" id="okp0" value="0"><input type="range" id="okp0Range" min="0" max="200" step="0.5" value="0" aria-label="左轮外环 Kp 滑块"></div>
+          <div class="pid-row"><label for="oki0">Ki</label><input type="number" id="oki0" value="0"><input type="range" id="oki0Range" min="0" max="20" step="0.01" value="0" aria-label="左轮外环 Ki 滑块"></div>
+          <div class="pid-row"><label for="okd0">Kd</label><input type="number" id="okd0" value="0"><input type="range" id="okd0Range" min="0" max="20" step="0.01" value="0" aria-label="左轮外环 Kd 滑块"></div>
         </div>
         <div class="pid-wheel">
-          <div class="pid-wheel-head"><b>右轮</b><span>位置式 · 未开放</span></div>
-          <div class="pid-row"><label for="okp1">Kp</label><input type="number" id="okp1" value="0" disabled><input type="range" id="okp1Range" min="0" max="20" step="0.01" value="0" disabled aria-label="右轮外环 Kp 滑块"></div>
-          <div class="pid-row"><label for="oki1">Ki</label><input type="number" id="oki1" value="0" disabled><input type="range" id="oki1Range" min="0" max="2" step="0.01" value="0" disabled aria-label="右轮外环 Ki 滑块"></div>
-          <div class="pid-row"><label for="okd1">Kd</label><input type="number" id="okd1" value="0" disabled><input type="range" id="okd1Range" min="0" max="2" step="0.01" value="0" disabled aria-label="右轮外环 Kd 滑块"></div>
+          <div class="pid-wheel-head"><b>右轮</b><span>位置式 · rpm/rev</span><button class="btn small" data-outerpid="1">写入</button></div>
+          <div class="pid-row"><label for="okp1">Kp</label><input type="number" id="okp1" value="0"><input type="range" id="okp1Range" min="0" max="200" step="0.5" value="0" aria-label="右轮外环 Kp 滑块"></div>
+          <div class="pid-row"><label for="oki1">Ki</label><input type="number" id="oki1" value="0"><input type="range" id="oki1Range" min="0" max="20" step="0.01" value="0" aria-label="右轮外环 Ki 滑块"></div>
+          <div class="pid-row"><label for="okd1">Kd</label><input type="number" id="okd1" value="0"><input type="range" id="okd1Range" min="0" max="20" step="0.01" value="0" aria-label="右轮外环 Kd 滑块"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);">
+          <label>位置阶跃 rev <input id="outerStep" type="number" value="1" min="0.1" max="20" step="0.1" style="width:80px;font:12px var(--mono);padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text)"></label>
+          <button class="btn" id="btnOuterCalc">由内环结果计算</button>
+          <button class="btn primary" id="btnOuterToggle">启用外环</button>
+          <span class="hint" id="outerStatus">先写增益再使能；启用后再点一次关闭</span>
         </div>
       </div>
 
-      <div class="actual" id="actualPid">实际内环 PID：等待回传</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 4px;">
+        <button class="btn small" id="btnSaveParams" type="button">保存参数到本页</button>
+        <button class="btn small" id="btnReloadParams" type="button">载入已存参数</button>
+        <span class="hint">保存在浏览器 localStorage，不写 Flash。</span>
+      </div>
+
+      <div class="actual" id="actualPid">内环 PID（本地写入）：—</div>
 
     </section>
   </div>
@@ -341,14 +354,16 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
         <div class="wheel left">
           <h3>LEFT / 左轮</h3>
           <div class="big"><span id="lRpm">0.0</span><small>rpm 实测</small></div>
-          <div class="kv"><span>目标</span><b id="lRef">0.0</b></div>
-          <div class="kv"><span>PWM</span><b id="lPwm">0.0%</b></div>
+          <div class="kv" hidden><span>目标</span><b id="lRef">0.0</b></div>
+          <div class="kv" hidden><span>PWM</span><b id="lPwm">—</b></div>
+          <div class="kv"><span>位置</span><b id="lPos">0.00</b></div>
         </div>
         <div class="wheel right">
           <h3>RIGHT / 右轮</h3>
           <div class="big"><span id="rRpm">0.0</span><small>rpm 实测</small></div>
-          <div class="kv"><span>目标</span><b id="rRef">0.0</b></div>
-          <div class="kv"><span>PWM</span><b id="rPwm">0.0%</b></div>
+          <div class="kv" hidden><span>目标</span><b id="rRef">0.0</b></div>
+          <div class="kv" hidden><span>PWM</span><b id="rPwm">—</b></div>
+          <div class="kv"><span>位置</span><b id="rPos">0.00</b></div>
         </div>
       </div>
       <div class="kv-grid">
@@ -371,30 +386,56 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
           <div class="curve-presets" role="group" aria-label="曲线显示预设">
             <button class="btn small" data-curves="all" aria-pressed="true">全部</button>
             <button class="btn small" data-curves="speed" aria-pressed="false">仅轮速</button>
-            <button class="btn small" data-curves="pwm" aria-pressed="false">仅 PWM</button>
             <button class="btn small" data-curves="none" aria-pressed="false">清空</button>
           </div>
           <span id="curveCount" aria-live="polite">6 / 6 条曲线</span>
         </div>
         <div class="legend" role="group" aria-label="选择显示曲线">
-          <label class="curve-option"><input type="checkbox" data-curve="lRef" checked><i class="ref"></i>左目标</label>
           <label class="curve-option"><input type="checkbox" data-curve="lRpm" checked><i></i>左实测</label>
-          <label class="curve-option"><input type="checkbox" data-curve="rRef" checked><i class="ref right-line"></i>右目标</label>
           <label class="curve-option"><input type="checkbox" data-curve="rRpm" checked><i class="right-line"></i>右实测</label>
-          <label class="curve-option"><input type="checkbox" data-curve="lPwm" checked><i></i>左 PWM</label>
-          <label class="curve-option"><input type="checkbox" data-curve="rPwm" checked><i class="right-line"></i>右 PWM</label>
         </div>
       </div>
       <div><div class="plot-heading"><b>轮速 <small> / rpm</small></b><span>最近 10 秒 · 自动量程</span></div>
         <canvas id="speedChart" role="img" aria-label="左右轮目标和实测轮速曲线"></canvas></div>
-      <div><div class="plot-heading"><b>控制输出 <small> / PWM %</small></b><span>实线：实测或输出 · 虚线：目标</span></div>
+      <div hidden><div class="plot-heading"><b>控制输出 <small> / PWM %</small></b><span>打包协议不回传 PWM</span></div>
         <canvas id="pwmChart" role="img" aria-label="左右轮 PWM 输出曲线"></canvas></div>
       <p class="hint">显示选择仅影响曲线；采集和 CSV 始终保留全部通道。</p>
     </section>
 
     <section class="card">
+      <h2><span class="section-index">05</span>内环自动调参 <small>开环阶跃 · FOPDT + IMC/CHR</small></h2>
+      <div class="pid-wheel">
+        <div class="pid-wheel-head"><b>测试设置</b><span>车轮必须架空，调参期间不要碰车</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;font-size:11px;color:var(--muted);">
+          <label>轮 <select id="tuneWheel" class="btn small"><option value="0">左轮</option><option value="1">右轮</option></select></label>
+          <label>方法 <select id="tuneMethod" class="btn small"><option value="imc">IMC（保守）</option><option value="chr">CHR（激进）</option></select></label>
+          <label>区域 rpm <input id="tuneRegions" type="text" value="50,100,150" style="width:120px;font:12px var(--mono);padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text)"></label>
+          <label>阶跃 PWM <input id="tuneStep" type="number" value="500" min="200" max="1500" step="100" style="width:80px;font:12px var(--mono);padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text)"></label>
+          <label>基线稳定 s <input id="tuneSettle" type="number" value="1.2" min="0.8" max="2" step="0.1" style="width:70px;font:12px var(--mono);padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text)"></label>
+          <label>阶跃时长 s <input id="tuneHold" type="number" value="3" min="2" max="5" step="0.5" style="width:70px;font:12px var(--mono);padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text)"></label>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn primary" id="btnTuneStart">开始自动调参</button>
+        <button class="btn danger" id="btnTuneAbort" disabled>中止</button>
+        <span class="hint" id="tuneStatus">等待开始</span>
+      </div>
+      <div class="stable-table-wrap" style="max-height:240px;">
+        <table class="stable-table">
+          <thead><tr><th>区域 rpm</th><th>基线 PWM</th><th>K rpm/PWM</th><th>τ s</th><th>θ s</th><th>R²</th><th>Kp</th><th>Ki</th><th>PM</th><th>GM</th><th>分数</th></tr></thead>
+          <tbody id="tuneBody"><tr><td colspan="11" class="empty">尚未运行</td></tr></tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn" id="btnTuneApply" disabled>应用选中区域</button>
+        <button class="btn" id="btnTuneSave" disabled>保存结果 CSV</button>
+        <span class="hint">结果为本地计算；应用后直接写内环 PID，不写 Flash。</span>
+      </div>
+    </section>
+
+    <section class="card">
       <div class="chart-head">
-        <div><h2><span class="section-index">05</span>稳定点记录</h2><p>转速与 PWM 同时平稳时记录，按左右轮分别汇总。</p></div>
+        <div><h2><span class="section-index">06</span>稳定点记录</h2><p>转速与 PWM 同时平稳时记录，按左右轮分别汇总。</p></div>
         <div class="stable-actions">
           <button class="btn" id="btnRecordStable" disabled>记录当前稳定点</button>
           <button class="btn" id="btnExportStable" disabled>↓ 导出全部 CSV</button>
@@ -442,7 +483,7 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
 
     <section class="card">
       <div class="log-head">
-        <h2><span class="section-index">06</span>连接与操作日志</h2>
+        <h2><span class="section-index">07</span>连接与操作日志</h2>
         <label><input type="checkbox" id="showTx"> 显示发送帧</label>
       </div>
       <div class="log" id="log"></div>
@@ -455,6 +496,7 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
   首次使用：Windows 配对 <code>JDY-31-SPP</code>（PIN 1234）→ 点「选择串口」→「连接」→ 等停止回传 → 勾选安全确认 →「使能」。<br>
   蓝牙 SPP 需要桌面版 <b>Chrome / Edge 117+</b>；更早的浏览器或手机浏览器不会列出蓝牙串口。Win11 若配对后没有出现 COM 口，请到「更多蓝牙选项 → COM 端口」手动添加，或改用旧版「设备和打印机 → 添加设备」完成配对。<br>
   同一 COM 口不能被其他程序（串口助手、car_host.py）同时占用。固件配置为 9600，蓝牙模块的 UART 波特率也必须设置为 9600。<br>
+  <b>页面协议：A5/A6 打包帧（速度 100 Hz / 位置 20 Hz）</b>；旧 JustFloat 固件不兼容，必须重新烧录。页面里有“保存参数到本页”按钮才是新版。<br>
   结束调试时先停止、核对停止回传，再断开串口。关闭 BAT 服务窗口不会自动关闭已打开网页的蓝牙连接。CSV 请在下次连接前导出。
 </div></details>
 </footer>
@@ -467,9 +509,10 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
    ============================================================ */
 const CMD_ARM = 1, CMD_STOP = 2, CMD_WHEELS = 3, CMD_PID = 4, CMD_HEARTBEAT = 5;
 const RPM_MIN = 20, RPM_MAX = 900, RPM_LIMIT = 900;
-/* 固件 PWM 限幅为满量程的 90%；超过它的回传按异常帧丢弃。 */
+/* 固件 PWM 限幅为满量程的 90%；打包协议不再回传 PWM。 */
 const PWM_LIMIT_PERCENT = 90;
-const TELEMETRY_TAIL = [0x00, 0x00, 0x80, 0x7f];
+const HAS_PWM = false;          /* 打包协议不传 PWM */
+const TELEMETRY_FAST = 0xA5, TELEMETRY_SLOW = 0xA6, TELEMETRY_LENGTH = 7;
 const RX_STALE_MS = 350;
 const TX_PERIOD_MS = 100;
 const STOP_RETRY_MS = 150;
@@ -506,6 +549,8 @@ function frame(cmd, data = []) {
 function wheelsFrame(left, right) {
   left = Math.max(-RPM_LIMIT, Math.min(RPM_LIMIT, Math.round(left)));
   right = Math.max(-RPM_LIMIT, Math.min(RPM_LIMIT, Math.round(right)));
+  app.target.l = left;         /* 目标只在本地上位机记录，遥测不再回传 */
+  app.target.r = right;
   return frame(CMD_WHEELS, [
     (left >> 8) & 0xff, left & 0xff,
     (right >> 8) & 0xff, right & 0xff
@@ -551,6 +596,13 @@ const app = {
   stopTimer: 0,
   lastRx: 0,
   lastSample: null,
+  lastFast: null,
+  lastSlow: null,
+  fastCount: 0,
+  lastState: null,
+  uiTick: 0,
+  target: {l: 0, r: 0},
+  outerOn: false,
   keys: new Set(),
   mode: 'wasd',
   stick: {x: 0, y: 0, active: false},
@@ -575,6 +627,11 @@ const app = {
 
 let rxBuf = new Uint8Array(0);
 
+/* 自动调参状态与结果（网页本地）。 */
+app.tuning = {active: false, phase: 'idle'};
+app.tuneResults = [];
+app.tuneSelected = -1;
+
 /* ============================================================
    DOM
    ============================================================ */
@@ -589,6 +646,9 @@ const rRpm = $('rRpm'), rRef = $('rRef'), rPwm = $('rPwm');
 const stateVal = $('stateVal'), faultVal = $('faultVal'), resultVal = $('resultVal');
 const framesVal = $('framesVal'), rxVal = $('rxVal'), ageVal = $('ageVal');
 const actualPid = $('actualPid');
+const lPos = $('lPos'), rPos = $('rPos');
+const outerStep = $('outerStep'), btnOuterCalc = $('btnOuterCalc');
+const btnOuterToggle = $('btnOuterToggle'), outerStatusEl = $('outerStatus');
 const logEl = $('log'), showTx = $('showTx'), btnCsv = $('btnCsv');
 const speedChart = $('speedChart'), pwmChart = $('pwmChart');
 const tabInner = $('tabInner'), tabOuter = $('tabOuter');
@@ -600,9 +660,25 @@ const lStableMetrics = $('lStableMetrics'), rStableMetrics = $('rStableMetrics')
 const stableBodyL = $('stableBodyL'), stableBodyR = $('stableBodyR');
 const lStableCount = $('lStableCount'), rStableCount = $('rStableCount');
 const btnExportL = $('btnExportL'), btnExportR = $('btnExportR');
+const tuneWheel = $('tuneWheel'), tuneMethod = $('tuneMethod');
+const tuneRegions = $('tuneRegions'), tuneStep = $('tuneStep');
+const tuneSettle = $('tuneSettle'), tuneHold = $('tuneHold');
+const btnTuneStart = $('btnTuneStart'), btnTuneAbort = $('btnTuneAbort');
+const tuneStatusEl = $('tuneStatus'), tuneBody = $('tuneBody');
+const btnTuneApply = $('btnTuneApply'), btnTuneSave = $('btnTuneSave');
 
-/* 外环当前未开放（固件 CAR_CASCADE_OUTER_ENABLE=0）；启用时同步改这里和页面说明。 */
-const OUTER_PID_ENABLED = false;
+/* 打包遥测不再回传 PWM：隐藏 PWM 曲线卡片和对应图例。 */
+if (!HAS_PWM && pwmChart) {
+  const pwmCard = pwmChart.closest('div');
+  if (pwmCard) pwmCard.style.display = 'none';
+  document.querySelectorAll('[data-curve="lPwm"], [data-curve="rPwm"]').forEach(input => {
+    const label = input.closest('label');
+    if (label) label.style.display = 'none';
+  });
+}
+
+/* 外环运行时开关由命令 7 控制；这里只影响稳定点记录的外环列显示。 */
+const OUTER_PID_ENABLED = true;
 const SMOOTH_WINDOW_MS = 2500, SMOOTH_MIN_SAMPLES = 12, SMOOTH_MIN_SPAN_MS = 1500;
 const SMOOTH_DWELL_MS = 1000, SMOOTH_COOLDOWN_MS = 2000;
 
@@ -727,6 +803,14 @@ async function connect() {
     app.connected = true;
     app.lastRx = 0;
     app.lastSample = null;
+    app.lastFast = null;
+    app.lastSlow = null;
+    app.fastCount = 0;
+    app.lastState = null;
+    app.uiTick = 0;
+    app.target = {l: 0, r: 0};
+    app.outerOn = false;
+    updateOuterUi();
     app.linkWarned = false;
     app.noTelemetryWarned = false;
     app.connectAt = performance.now();
@@ -779,6 +863,12 @@ async function disconnect(sendStop = true) {
   app.armed = false;
   app.pendingArm = false;
   app.stopRetries = 0;
+  if (app.tuning.active) {
+    app.tuning.active = false;
+    tuneStatus('连接断开，已中止');
+    btnTuneStart.disabled = false;
+    btnTuneAbort.disabled = true;
+  }
   app.keys.clear();
   clearTimeout(app.stopTimer);
   discardQueued();
@@ -804,6 +894,13 @@ async function disconnect(sendStop = true) {
   pill.textContent = '未连接';
   pill.className = 'pill off';
   app.lastSample = null;
+  app.lastFast = null;
+  app.lastSlow = null;
+  app.fastCount = 0;
+  app.lastState = null;
+  app.target = {l: 0, r: 0};
+  app.outerOn = false;
+  updateOuterUi();
   app.lastRx = 0;
   app.series = [];
   resetTelemetryUi();
@@ -855,13 +952,19 @@ if ('serial' in navigator) {
 }
 
 /* ============================================================
-   回传解析：16 × float32 小端 + 00 00 80 7F
+   回传解析：打包二进制帧（不再使用 JustFloat）
+     A5 | 左 rpm int16 | 右 rpm int16 | 状态 | XOR          100 Hz
+     A6 | 左位置 int16(0.01 rev) | 右位置 int16 | 状态 | XOR  20 Hz
    ============================================================ */
-function findTail(buf) {
-  for (let i = 0; i + 3 < buf.length; i++) {
-    if (buf[i] === 0 && buf[i + 1] === 0 && buf[i + 2] === 0x80 && buf[i + 3] === 0x7f) return i;
-  }
-  return -1;
+function frameChecksum(chunk) {
+  let x = 0;
+  for (let i = 0; i < TELEMETRY_LENGTH - 1; i++) x ^= chunk[i];
+  return x & 0xff;
+}
+
+function readI16(chunk, offset) {
+  const raw = (chunk[offset] << 8) | chunk[offset + 1];
+  return (raw & 0x8000) ? raw - 0x10000 : raw;
 }
 
 function feed(bytes) {
@@ -870,36 +973,57 @@ function feed(bytes) {
   merged.set(bytes, rxBuf.length);
   rxBuf = merged;
 
-  while (true) {
-    const idx = findTail(rxBuf);
-    if (idx < 0) {
-      if (rxBuf.length > 67) rxBuf = rxBuf.slice(rxBuf.length - 67);
-      return;
+  while (rxBuf.length >= TELEMETRY_LENGTH) {
+    const type = rxBuf[0];
+    if (type !== TELEMETRY_FAST && type !== TELEMETRY_SLOW) {
+      rxBuf = rxBuf.slice(1);
+      continue;
     }
-    if (idx >= 64) {
-      const chunk = rxBuf.slice(idx - 64, idx);
-      parseSample(chunk);
+    const chunk = rxBuf.slice(0, TELEMETRY_LENGTH);
+    if (frameChecksum(chunk) !== chunk[TELEMETRY_LENGTH - 1]) {
+      rxBuf = rxBuf.slice(1);
+      continue;
     }
-    rxBuf = rxBuf.slice(idx + 4);
+    rxBuf = rxBuf.slice(TELEMETRY_LENGTH);
+    const state = chunk[5];
+    if (state > 2) continue;
+    if (type === TELEMETRY_FAST) {
+      updateFast(readI16(chunk, 1), readI16(chunk, 3), state);
+    } else {
+      updateSlow(readI16(chunk, 1) / 100, readI16(chunk, 3) / 100, state);
+    }
   }
+
+  if (rxBuf.length > 4096) rxBuf = new Uint8Array(0);   /* 长时间无有效帧，防止缓冲无限增长 */
 }
 
-function parseSample(chunk) {
-  const dv = new DataView(chunk.buffer, chunk.byteOffset, 64);
-  const v = [];
-  for (let i = 0; i < 16; i++) v.push(dv.getFloat32(i * 4, true));
-  if (!v.every(Number.isFinite)) return;
-  const state = v[0];
-  if (state !== 0 && state !== 1 && state !== 2) return;
-  if (!Number.isInteger(v[1]) || !(v[1] in FAULTS) ||
-      !Number.isInteger(v[8]) || !(v[8] in RESULTS) ||
-      !Number.isInteger(v[9]) || v[9] < 0 ||
-      Math.abs(v[6]) > PWM_LIMIT_PERCENT || Math.abs(v[7]) > PWM_LIMIT_PERCENT ||
-      v.slice(10).some(gain => gain < 0 || gain > 655.36)) return;
-  onSample(v, state);
+/* 兼容旧 UI 的 18 元素数组：0 状态、1 故障码(无)、2/3 左目标/实测、
+ * 4/5 右目标/实测、6/7 PWM(无)、8 结果(无)、9 帧数、10~15 本地增益、
+ * 16/17 左右位置。目标、增益、帧数都由网页自己维护。 */
+function buildSample(state) {
+  const gl = innerGains(0), gr = innerGains(1);
+  const fast = app.lastFast, slow = app.lastSlow;
+  return [
+    state, 0, app.target.l, fast ? fast.l : 0,
+    app.target.r, fast ? fast.r : 0,
+    0, 0, -1, app.fastCount,
+    gl.kp, gl.ki, gl.kd, gr.kp, gr.ki, gr.kd,
+    slow ? slow.l : 0, slow ? slow.r : 0
+  ];
 }
 
-function onSample(v, state) {
+function updateFast(left, right, state) {
+  app.lastFast = {l: left, r: right};
+  app.fastCount++;
+  onSample(buildSample(state), state, true);
+}
+
+function updateSlow(leftPos, rightPos, state) {
+  app.lastSlow = {l: leftPos, r: rightPos};
+  onSample(buildSample(state), state, false);
+}
+
+function onSample(v, state, isFast) {
   const now = performance.now();
   app.lastRx = now;
   app.linkWarned = false;
@@ -915,44 +1039,62 @@ function onSample(v, state) {
     app.keys.clear();
     updateDriveButtons();
     if (state === 2) app.pendingArm = false;
+    if (app.outerOn) {
+      app.outerOn = false;
+      updateOuterUi();
+      outerStatusEl.textContent = '外环已自动关闭（状态离开运行）';
+    }
   }
 
-  const fault = Math.round(v[1]);
-  const result = Math.round(v[8]);
+  const changed = app.lastState !== state;
+  app.lastState = state;
 
   stateVal.textContent = STATES[state] || String(state);
-  faultVal.textContent = FAULTS[fault] || ('故障 ' + fault);
-  resultVal.textContent = RESULTS[result] || String(result);
-  framesVal.textContent = Math.round(v[9]);
+  faultVal.textContent = state === 2 ? '故障' : '正常';
+  resultVal.textContent = '—';
+  framesVal.textContent = app.fastCount;
   rxVal.textContent = app.rxBytes.toLocaleString('zh-CN');
 
   statePill.textContent = STATES[state] || '未知';
   statePill.className = 'pill ' + (state === 1 ? 'run' : state === 2 ? 'fault' : 'off');
-  faultText.textContent = '故障：' + (FAULTS[fault] || fault);
+  faultText.textContent = '故障：' + (state === 2 ? '有（无故障码回传）' : '无');
   faultText.classList.toggle('bad', state === 2);
 
   lRpm.textContent = v[3].toFixed(1);
   lRef.textContent = v[2].toFixed(1);
-  lPwm.textContent = v[6].toFixed(1) + '%';
+  lPwm.textContent = HAS_PWM ? (v[6].toFixed(1) + '%') : '—';
   rRpm.textContent = v[5].toFixed(1);
   rRef.textContent = v[4].toFixed(1);
-  rPwm.textContent = v[7].toFixed(1) + '%';
+  rPwm.textContent = HAS_PWM ? (v[7].toFixed(1) + '%') : '—';
+  lPos.textContent = v[16].toFixed(2);
+  rPos.textContent = v[17].toFixed(2);
 
   actualPid.textContent =
-    `实际内环 PID：左 ${v[10].toFixed(2)} / ${v[11].toFixed(2)} / ${v[12].toFixed(2)}　` +
+    `内环 PID（本地写入）：左 ${v[10].toFixed(2)} / ${v[11].toFixed(2)} / ${v[12].toFixed(2)}　` +
     `右 ${v[13].toFixed(2)} / ${v[14].toFixed(2)} / ${v[15].toFixed(2)}`;
 
+  if (isFast) {
+    app.series.push({t: now, state, lRef: v[2], lRpm: v[3], rRef: v[4], rRpm: v[5], lPwm: 0, rPwm: 0});
+    if (app.series.length > 1200) app.series.splice(0, app.series.length - 1200);
 
-  app.series.push({t: now, state, lRef: v[2], lRpm: v[3], rRef: v[4], rRpm: v[5], lPwm: v[6], rPwm: v[7]});
-  if (app.series.length > 1200) app.series.splice(0, app.series.length - 1200);
+    const rel = (now - app.connectAt) / 1000;
+    app.rows.push([rel.toFixed(3), ...v.map(x => Number(x.toFixed(3)))]);
+    if (app.rows.length > 200000) app.rows.shift();
+  }
 
-  const rel = (now - app.connectAt) / 1000;
-  app.rows.push([rel.toFixed(3), ...v.map(x => Number(x.toFixed(3)))]);
-  if (app.rows.length > 200000) app.rows.shift();
+  if (isFast && app.tuning.active) {
+    const tr = app.tuning;
+    const rpm = tr.wheel ? v[5] : v[3];
+    if (tr.phase === 'baseline') tr.y0Samples.push(rpm);
+    else if (tr.phase === 'step') tr.samples.push({t: now - tr.stepStart, y: rpm});
+  }
 
-  updateStableUi(state, now, true);
   markCharts();
-  updateButtons();
+  app.uiTick++;
+  if (changed || app.uiTick % 5 === 0) {
+    updateStableUi(state, now, true);
+    updateButtons();
+  }
 }
 
 /* ============================================================
@@ -978,8 +1120,13 @@ function updateButtons() {
       if (input) input.disabled = !canTune;
       if (range) range.disabled = !canTune;
     }
+    for (const name of ['okp', 'oki', 'okd']) {
+      const input = $(`${name}${wheel}`), range = $(`${name}${wheel}Range`);
+      if (input) input.disabled = !canTune;
+      if (range) range.disabled = !canTune;
+    }
   }
-  document.querySelectorAll('[data-pid]').forEach(b => b.disabled = !canTune);
+  document.querySelectorAll('[data-pid], [data-outerpid]').forEach(b => b.disabled = !canTune);
 
   updateDriveButtons();
 }
@@ -1005,8 +1152,9 @@ function resetTelemetryUi() {
   framesVal.textContent = ageVal.textContent = '--';
   ageVal.classList.remove('bad');
   lRpm.textContent = lRef.textContent = rRpm.textContent = rRef.textContent = '0.0';
-  lPwm.textContent = rPwm.textContent = '0.0%';
-  actualPid.textContent = '实际内环 PID：等待回传';
+  lPwm.textContent = rPwm.textContent = '—';
+  lPos.textContent = rPos.textContent = '0.00';
+  actualPid.textContent = '内环 PID（本地写入）：—';
   rxVal.textContent = '0';
   resetStableUi();
 }
@@ -1020,6 +1168,8 @@ function clampRpm(value) {
 }
 
 function drive() {
+  if (app.tuning.active) return;   /* 调参期间只发开环命令，避免 WHEELS 清掉开环 */
+  if (app.outerOn) { send(frame(CMD_HEARTBEAT)); return; }  /* 外环运行时只喂看门狗 */
   if (!app.armed) return;
   if (app.mode === 'stick') driveFromStick();
   else driveFromKeys();
@@ -1108,6 +1258,7 @@ function setDriveMode(mode) {
 }
 
 function pressKey(key, pressed) {
+  if (app.tuning.active) return;
   if (pressed) {
     if (!app.armed) {
       if (app.connected && app.lastSample && Math.round(app.lastSample[0]) === 0) {
@@ -1147,6 +1298,8 @@ async function arm() {
     return;
   }
   app.keys.clear();
+  app.target = {l: 0, r: 0};
+  if (app.outerOn) { app.outerOn = false; updateOuterUi(); }
   const epoch = ++app.armEpoch;
   app.pendingArm = true;
   app.armSentAt = performance.now();
@@ -1163,9 +1316,19 @@ async function arm() {
 
 function stop() {
   app.armEpoch++;
+  if (app.tuning.active) {
+    app.tuning.active = false;
+    tuneStatus('已停止');
+    btnTuneStart.disabled = false;
+    btnTuneAbort.disabled = true;
+    btnTuneApply.disabled = !app.tuneResults.length;
+    btnTuneSave.disabled = !app.tuneResults.length;
+  }
   app.armed = false;
   app.pendingArm = false;
   app.keys.clear();
+  app.target = {l: 0, r: 0};
+  if (app.outerOn) { app.outerOn = false; updateOuterUi(); }
   app.stick.active = false;
   app.stick.x = 0;
   app.stick.y = 0;
@@ -1217,7 +1380,8 @@ async function writePid(wheel) {
   }
   try {
     if (await send(pidFrame(wheel, kp, ki, kd))) {
-      log(`${wheel ? '右' : '左'}轮内环 PID 已发送：${kp} / ${ki} / ${kd}，请核对实际内环 PID 回传`, 'info');
+      saveParams(true);
+      log(`${wheel ? '右' : '左'}轮内环 PID 已发送：${kp} / ${ki} / ${kd}（直接写入，无回读；已存本页）`, 'info');
       return true;
     }
     log('PID 未发送成功，请检查连接后重试', 'error');
@@ -1254,6 +1418,52 @@ function readParam(wheel, name) {
   return raw === '' ? NaN : Number(raw);
 }
 
+/* 参数保存在浏览器 localStorage，不写固件 Flash。 */
+const PARAM_KEY = 'car-console-params-v1';
+
+function collectParams() {
+  const inner = [0, 1].map(w => ['kp', 'ki', 'kd'].map(n => Number($(`${n}${w}`).value) || 0));
+  const outer = [0, 1].map(w => ['okp', 'oki', 'okd'].map(n => Number($(`${n}${w}`).value) || 0));
+  return {version: 1, inner, outer};
+}
+
+function saveParams(silent = false) {
+  try {
+    localStorage.setItem(PARAM_KEY, JSON.stringify(collectParams()));
+    if (!silent) log('参数已保存到本页（localStorage），不写 Flash', 'ok');
+  } catch (err) {
+    log('参数保存失败：' + err.message, 'error');
+  }
+}
+
+function loadParams(silent = false) {
+  try {
+    const raw = localStorage.getItem(PARAM_KEY);
+    if (!raw) {
+      if (!silent) log('本页没有已保存的参数', 'warn');
+      return;
+    }
+    const p = JSON.parse(raw);
+    if (!p || !Array.isArray(p.inner) || !Array.isArray(p.outer)) return;
+    for (const w of [0, 1]) {
+      ['kp', 'ki', 'kd'].forEach((n, i) => {
+        const v = Number(p.inner[w] && p.inner[w][i]);
+        if (Number.isFinite(v)) setParam(w, n, v);
+      });
+      ['okp', 'oki', 'okd'].forEach((n, i) => {
+        const v = Number(p.outer[w] && p.outer[w][i]);
+        if (!Number.isFinite(v)) return;
+        const input = $(`${n}${w}`), range = $(`${n}${w}Range`);
+        if (input) input.value = String(v);
+        if (range) range.value = String(Math.min(v, Number(range.max) || v));
+      });
+    }
+    if (!silent) log('已从本页载入参数（仅填入输入框，未写入小车）', 'ok');
+  } catch (err) {
+    if (!silent) log('参数载入失败：' + err.message, 'warn');
+  }
+}
+
 function bindParam(wheel, name) {
   const input = paramInput(wheel, name), range = paramRange(wheel, name);
   if (!input || !range) return;
@@ -1282,12 +1492,8 @@ function selectPidTab(loop) {
    曲线
    ============================================================ */
 const CURVES = [
-  {key:'lRef', group:'speed', side:'left', dash:[5,4], width:1.5},
   {key:'lRpm', group:'speed', side:'left', dash:[], width:2},
-  {key:'rRef', group:'speed', side:'right', dash:[5,4], width:1.5},
-  {key:'rRpm', group:'speed', side:'right', dash:[], width:2},
-  {key:'lPwm', group:'pwm', side:'left', dash:[], width:1.8},
-  {key:'rPwm', group:'pwm', side:'right', dash:[], width:1.8}
+  {key:'rRpm', group:'speed', side:'right', dash:[], width:2}
 ];
 const visibleCurves = new Set(CURVES.map(curve => curve.key));
 
@@ -1387,7 +1593,7 @@ function polyline(ctx, points, color, width, dash) {
 }
 
 function drawSpeedChart() { drawChart(speedChart, 'speed', 60, 20); }
-function drawPwmChart() { drawChart(pwmChart, 'pwm', 20, 10); }
+function drawPwmChart() { if (!HAS_PWM) return; drawChart(pwmChart, 'pwm', 20, 10); }
 
 function drawChart(canvas, group, minimum, step) {
   const COLOR = chartColors();
@@ -1510,7 +1716,7 @@ function computeSmooth(series, side, now) {
   if (absRpm < 20) { result.reason = '转速过低'; return result; }
   if (Math.max(...refs) - Math.min(...refs) > 2) { result.reason = '目标变化中'; return result; }
   if (Math.abs(rpm - ref) > Math.max(4, absRpm * 0.05)) { result.reason = '跟踪偏差大'; return result; }
-  if (pwm < 2 || pwm > 88) { result.reason = 'PWM 接近边界'; return result; }
+  if (HAS_PWM && (pwm < 2 || pwm > 88)) { result.reason = 'PWM 接近边界'; return result; }
 
   result.cv = 100 * stdOf(rpms, rpm) / absRpm;
   result.pp = 100 * (percentileOf(rpms, 0.9) - percentileOf(rpms, 0.1)) / absRpm;
@@ -1523,9 +1729,9 @@ function computeSmooth(series, side, now) {
   const failed = [];
   if (result.cv > limits.cv) failed.push('CV');
   if (result.pp > limits.pp) failed.push('p10–90');
-  if (result.pwmStd > limits.pwm) failed.push('PWMσ');
+  if (HAS_PWM && result.pwmStd > limits.pwm) failed.push('PWMσ');
   if (Math.abs(result.slope) > 3) failed.push('转速漂移');
-  if (Math.abs(result.pwmSlope) > 0.3) failed.push('PWM漂移');
+  if (HAS_PWM && Math.abs(result.pwmSlope) > 0.3) failed.push('PWM漂移');
   if (failed.length) { result.reason = '抖动：' + failed.join(' / '); return result; }
 
   result.pass = true;
@@ -1534,10 +1740,12 @@ function computeSmooth(series, side, now) {
 }
 
 function innerGains(wheel) {
-  const sample = app.lastSample;
-  if (!sample) return {kp: 0, ki: 0, kd: 0};
-  const base = wheel ? 13 : 10;
-  return {kp: sample[base], ki: sample[base + 1], kd: sample[base + 2]};
+  const suffix = wheel ? '1' : '0';
+  return {
+    kp: Number($('kp' + suffix).value) || 0,
+    ki: Number($('ki' + suffix).value) || 0,
+    kd: Number($('kd' + suffix).value) || 0
+  };
 }
 
 function outerGains(wheel) {
@@ -1547,6 +1755,546 @@ function outerGains(wheel) {
     ki: Number($('oki' + suffix).value) || 0,
     kd: Number($('okd' + suffix).value) || 0
   };
+}
+
+/* ============================================================
+   内环自动调参：开环阶跃 -> FOPDT 辨识 -> IMC/CHR -> 质量评分
+   原理：
+     1. 在某个工作点先用基线 PWM 把车轮稳住，绕开静摩擦死区；
+     2. 叠加一个 PWM 阶跃，记录 100 Hz 转速响应；
+     3. 拟合 K·e^(-θs)/(τs+1)，θ/τ 用网格搜索，K 由终值差/阶跃幅值得到；
+     4. 用 IMC 或 CHR 公式算 PI，再换算成固件的 5 ms 离散 Ki；
+     5. 用 R²、相位裕度、增益裕度、参数合理性给出 0~100 分。
+   ============================================================ */
+function tuneStatus(text) { if (tuneStatusEl) tuneStatusEl.textContent = text; }
+function tuneLog(msg, kind = 'info') { log('[调参] ' + msg, kind); }
+
+function openloopFrame(wheel, pwm) {
+  pwm = Math.max(-3000, Math.min(3000, Math.round(pwm)));
+  return frame(6, [wheel, (pwm >> 8) & 0xff, pwm & 0xff]);
+}
+
+function tuneRegionsList() {
+  return String(tuneRegions.value).split(',')
+    .map(s => Number(s.trim()))
+    .filter(v => Number.isFinite(v) && v >= 20 && v <= 250)
+    .slice(0, 4);
+}
+
+function tuneBaseline(wheel, rpm, step) {
+  const dead = wheel ? 247 : 200;
+  const gain = wheel ? 10.93 : 10.98;
+  const base = Math.round(dead + gain * rpm);
+  return Math.max(0, Math.min(base, 3000 - step));
+}
+
+function tuneStart() {
+  if (!app.connected) { tuneLog('请先连接串口', 'warn'); return; }
+  if (app.tuning.active) return;
+  if (app.armed || app.pendingArm) { tuneLog('请先停止再开始', 'warn'); return; }
+  if (!safeCheck.checked) { tuneLog('请先勾选安全确认', 'warn'); safeCheck.focus(); return; }
+  const state = app.lastSample ? Math.round(app.lastSample[0]) : null;
+  if (state !== 0 || performance.now() - app.lastRx > RX_STALE_MS) {
+    tuneLog('请先停车并等到“停止”状态回传', 'warn');
+    return;
+  }
+  const regions = tuneRegionsList();
+  if (!regions.length) { tuneLog('区域转速无效（20~250 rpm，逗号分隔）', 'warn'); return; }
+  const step = Math.round(Number(tuneStep.value));
+  const settle = Number(tuneSettle.value), hold = Number(tuneHold.value);
+  if (!(step >= 200 && step <= 1500)) { tuneLog('阶跃 PWM 需在 200~1500', 'warn'); return; }
+  if (!(settle >= 0.8 && settle <= 2 && hold >= 2 && hold <= 5)) {
+    tuneLog('时间参数超出范围', 'warn');
+    return;
+  }
+  const wheel = Number(tuneWheel.value) ? 1 : 0;
+  app.tuning = {
+    active: true, phase: 'prepare', wheel, method: tuneMethod.value,
+    regions: regions.map(rpm => ({rpm, baseline: tuneBaseline(wheel, rpm, step)})),
+    index: 0, step, settleMs: settle * 1000, holdMs: hold * 1000,
+    baselinePwm: 0, stepPwm: 0, baselineStart: 0, stepStart: 0, armAt: 0,
+    startedAt: performance.now(), armSent: false,
+    y0Samples: [], samples: [], y0: 0
+  };
+  app.tuneResults = [];
+  app.tuneSelected = -1;
+  renderTuneResults();
+  app.keys.clear();
+  updateDriveButtons();
+  btnTuneStart.disabled = true;
+  btnTuneAbort.disabled = false;
+  btnTuneApply.disabled = true;
+  btnTuneSave.disabled = true;
+  tuneStatus('准备：等待使能');
+  tuneLog(`开始：${wheel ? '右' : '左'}轮，区域 ${regions.join('/')} rpm，阶跃 ${step} PWM`, 'info');
+}
+
+function sendTuneOpenLoop(pwm) {
+  if (!app.tuning.active) return;
+  send(openloopFrame(app.tuning.wheel, pwm));
+}
+
+function tuningTick() {
+  const t = app.tuning;
+  if (!t || !t.active) return;
+  const now = performance.now();
+  const state = app.lastSample ? Math.round(app.lastSample[0]) : null;
+
+  if (state === 2) { tuningAbort('控制器故障'); return; }
+
+  if (t.phase === 'prepare') {
+    if (state === 0 && now - app.lastRx < RX_STALE_MS && app.stopRetries === 0) {
+      if (!t.armSent) {
+        t.armSent = true;
+        t.armAt = now;
+        t.phase = 'arm';
+        tuneStatus('等待使能确认');
+        void arm();
+      }
+    } else if (now - t.startedAt > 3000) {
+      tuningAbort('准备超时：收不到停止状态');
+    }
+    return;
+  }
+
+  if (t.phase === 'arm') {
+    if (app.armed) {
+      t.phase = 'baseline';
+      t.baselinePwm = t.regions[t.index].baseline;
+      t.baselineStart = now;
+      t.y0Samples = [];
+      t.samples = [];
+      sendTuneOpenLoop(t.baselinePwm);
+      tuneStatus(`区域 ${t.index + 1}/${t.regions.length}：基线 ${t.baselinePwm} PWM 稳定中`);
+    } else if (now - t.armAt > 1500) {
+      tuningAbort('ARM 未确认');
+    }
+    return;
+  }
+
+  if (t.phase === 'baseline') {
+    sendTuneOpenLoop(t.baselinePwm);
+    if (now - t.baselineStart >= t.settleMs) {
+      t.y0 = meanOf(t.y0Samples.slice(-40));
+      t.phase = 'step';
+      t.stepStart = now;
+      t.stepPwm = t.baselinePwm + t.step;
+      t.samples = [];
+      sendTuneOpenLoop(t.stepPwm);
+      tuneStatus(`区域 ${t.index + 1}/${t.regions.length}：阶跃 +${t.step} PWM 中`);
+    }
+    return;
+  }
+
+  if (t.phase === 'step') {
+    sendTuneOpenLoop(t.stepPwm);
+    if (now - t.stepStart >= t.holdMs) finishTuneRegion();
+  }
+}
+
+function fitFopdt(samples, y0, du) {
+  if (!samples || samples.length < 20 || !(du > 0)) return null;
+  const tail = samples.slice(-Math.max(10, Math.floor(samples.length * 0.2)));
+  const yEnd = meanOf(tail.map(s => s.y));
+  const K = (yEnd - y0) / du;
+  if (!(K > 1e-4 && K < 2)) return null;
+
+  let best = null;
+  for (let theta = 0; theta <= 0.3; theta += 0.01) {
+    for (let tau = 0.02; tau <= 1.5; tau += 0.02) {
+      let sse = 0;
+      for (const s of samples) {
+        const tt = s.t - theta;
+        const yhat = tt <= 0 ? y0 : y0 + K * du * (1 - Math.exp(-tt / tau));
+        const e = s.y - yhat;
+        sse += e * e;
+      }
+      if (!best || sse < best.sse) best = {theta, tau, sse};
+    }
+  }
+
+  const meanY = meanOf(samples.map(s => s.y));
+  let sst = 0;
+  for (const s of samples) sst += (s.y - meanY) * (s.y - meanY);
+  const r2 = sst > 0 ? 1 - best.sse / sst : 0;
+  return {K, tau: best.tau, theta: best.theta, r2, y0, yEnd, du};
+}
+
+function tuneGains(fit, method) {
+  const {K, tau, theta} = fit;
+  if (!(K > 1e-4 && tau > 0 && theta >= 0)) return null;
+  let kp, ti;
+  if (method === 'chr') {
+    kp = 0.6 * tau / (K * Math.max(theta, 0.02));
+    ti = tau;
+  } else {
+    const lambda = Math.max(0.5 * tau, 3 * theta);
+    kp = tau / (K * (lambda + theta));
+    ti = tau;
+  }
+  kp *= 0.7;                       /* 安全系数，抵消模型误差和测速滞后 */
+  let ki = (kp / ti) * 0.005;      /* 连续 Ki -> 5 ms 离散 Ki */
+  let limited = false;
+  if (kp > 14) { kp = 14; limited = true; }
+  if (ki > 2) { ki = 2; limited = true; }
+  return {kp, ki, kd: 0, limited};
+}
+
+function tuneMargins(fit, gains) {
+  const {K, tau, theta} = fit;
+  const kp = gains.kp;
+  const kiC = gains.ki / 0.005;
+  const magAt = w => Math.hypot(kp, kiC / w) * K / Math.hypot(1, w * tau);
+  const phaseAt = w => -Math.PI / 2 + Math.atan(w * kp / kiC) -
+                       Math.atan(w * tau) - w * theta;
+
+  let wc = 0;
+  for (let w = 0.05; w < 3000; w *= 1.005) {
+    if (magAt(w) <= 1) { wc = w; break; }
+  }
+  if (!wc) return {pm: 0, gm: 0, wc: 0};
+  const pm = 180 + phaseAt(wc) * 180 / Math.PI;
+
+  let gm = Infinity;
+  for (let w = wc; w < 6000; w *= 1.005) {
+    if (phaseAt(w) <= -Math.PI) {
+      gm = -20 * Math.log10(magAt(w));
+      break;
+    }
+  }
+  return {pm, gm, wc};
+}
+
+function tuneScore(fit, gains, margins) {
+  let score = 0;
+  const reasons = [];
+  score += Math.max(0, Math.min(1, (fit.r2 - 0.8) / 0.18)) * 40;
+  if (fit.r2 < 0.9) reasons.push('拟合 R² 低');
+
+  if (margins.pm >= 45 && margins.pm <= 70) score += 30;
+  else if (margins.pm >= 35 && margins.pm < 45) { score += 20; reasons.push('相位裕度偏低'); }
+  else if (margins.pm > 70 && margins.pm <= 90) { score += 20; reasons.push('偏保守'); }
+  else reasons.push('相位裕度 ' + margins.pm.toFixed(0) + '°');
+
+  if (Number.isFinite(margins.gm) && margins.gm >= 6) score += 10;
+  else reasons.push('增益裕度不足');
+
+  if (!gains.limited) score += 20;
+  else reasons.push('增益被上限限制');
+
+  return {score: Math.max(0, Math.min(100, Math.round(score))), reasons};
+}
+
+function finishTuneRegion() {
+  const t = app.tuning;
+  const region = t.regions[t.index];
+  if (!(t.y0 > 5)) {
+    tuningAbort('基线转速太低：检查车轮是否架空、开环命令是否生效');
+    return;
+  }
+  const fit = fitFopdt(t.samples, t.y0, t.step);
+  if (!fit) { tuningAbort('拟合失败：数据不足或响应太小'); return; }
+  const gains = tuneGains(fit, t.method);
+  if (!gains) { tuningAbort('增益计算失败：K/τ/θ 不合理'); return; }
+  const margins = tuneMargins(fit, gains);
+  const score = tuneScore(fit, gains, margins);
+
+  app.tuneResults.push({
+    wheel: t.wheel, regionRpm: t.y0, targetRpm: region.rpm,
+    baselinePwm: t.baselinePwm, stepPwm: t.step,
+    K: fit.K, tau: fit.tau, theta: fit.theta, r2: fit.r2, wc: margins.wc,
+    kp: gains.kp, ki: gains.ki, kd: gains.kd, limited: gains.limited,
+    pm: margins.pm, gm: margins.gm, score: score.score, reasons: score.reasons
+  });
+  tuneLog(`区域 ${region.rpm}（实测 ${t.y0.toFixed(1)} rpm）：K=${fit.K.toFixed(4)} ` +
+          `τ=${fit.tau.toFixed(3)} θ=${fit.theta.toFixed(3)} R²=${fit.r2.toFixed(3)} ` +
+          `→ Kp=${gains.kp.toFixed(2)} Ki=${gains.ki.toFixed(2)} ` +
+          `PM=${margins.pm.toFixed(0)}° 分数 ${score.score}`,
+          score.score >= 70 ? 'ok' : 'warn');
+  renderTuneResults();
+
+  t.index++;
+  if (t.index < t.regions.length) {
+    t.phase = 'baseline';
+    t.baselinePwm = t.regions[t.index].baseline;
+    t.baselineStart = performance.now();
+    t.y0Samples = [];
+    t.samples = [];
+    sendTuneOpenLoop(t.baselinePwm);
+    tuneStatus(`区域 ${t.index + 1}/${t.regions.length}：基线稳定中`);
+  } else {
+    tuningFinish();
+  }
+}
+
+function tuningFinish() {
+  const t = app.tuning;
+  t.active = false;
+  send(openloopFrame(t.wheel, 0));
+  stop();
+  tuneStatus('完成：已发送 STOP，可应用或保存结果');
+  btnTuneStart.disabled = false;
+  btnTuneAbort.disabled = true;
+  btnTuneApply.disabled = !app.tuneResults.length;
+  btnTuneSave.disabled = !app.tuneResults.length;
+  try { localStorage.setItem('car-console-tune-v1', JSON.stringify(app.tuneResults)); } catch (_) {}
+  tuneLog('自动调参完成', 'ok');
+}
+
+function tuningAbort(reason) {
+  if (!app.tuning || !app.tuning.active) return;
+  const t = app.tuning;
+  t.active = false;
+  send(openloopFrame(t.wheel, 0));
+  stop();
+  tuneStatus('已中止：' + reason);
+  tuneLog('中止：' + reason, 'error');
+  btnTuneStart.disabled = false;
+  btnTuneAbort.disabled = true;
+  btnTuneApply.disabled = !app.tuneResults.length;
+  btnTuneSave.disabled = !app.tuneResults.length;
+}
+
+function renderTuneResults() {
+  if (!tuneBody) return;
+  tuneBody.replaceChildren();
+  if (!app.tuneResults.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 11;
+    cell.className = 'empty';
+    cell.textContent = '尚未运行';
+    row.appendChild(cell);
+    tuneBody.appendChild(row);
+    return;
+  }
+  app.tuneResults.forEach((r, index) => {
+    const row = document.createElement('tr');
+    const cells = [
+      r.regionRpm.toFixed(1),
+      String(r.baselinePwm),
+      r.K.toFixed(4),
+      r.tau.toFixed(3),
+      r.theta.toFixed(3),
+      r.r2.toFixed(3),
+      r.kp.toFixed(2),
+      r.ki.toFixed(2),
+      r.pm.toFixed(0) + '°',
+      Number.isFinite(r.gm) ? r.gm.toFixed(1) + ' dB' : '∞',
+      String(r.score)
+    ];
+    for (const text of cells) {
+      const cell = document.createElement('td');
+      cell.textContent = text;
+      row.appendChild(cell);
+    }
+    row.title = `目标 ${r.targetRpm} rpm；${r.reasons.length ? r.reasons.join('；') : '通过'}`;
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', () => {
+      app.tuneSelected = index;
+      [...tuneBody.children].forEach((el, i) => {
+        el.style.background = i === index ? 'var(--panel2)' : '';
+      });
+      btnTuneApply.disabled = false;
+    });
+    tuneBody.appendChild(row);
+  });
+}
+
+async function tuneApply() {
+  const r = app.tuneResults[app.tuneSelected];
+  if (!r) { tuneLog('先点击选择一行结果', 'warn'); return; }
+  if (!app.connected || app.armed || app.pendingArm) {
+    tuneLog('先停止并取消使能再应用', 'warn');
+    return;
+  }
+  const state = app.lastSample ? Math.round(app.lastSample[0]) : null;
+  if (state !== 0 || performance.now() - app.lastRx > RX_STALE_MS) {
+    tuneLog('等待“停止”状态回传后再应用', 'warn');
+    return;
+  }
+  const sent = await send(pidFrame(r.wheel, r.kp, r.ki, r.kd));
+  if (!sent) { tuneLog('应用失败：发送未成功', 'error'); return; }
+  setParam(r.wheel, 'kp', r.kp);
+  setParam(r.wheel, 'ki', r.ki);
+  setParam(r.wheel, 'kd', 0);
+  saveParams(true);
+  tuneLog(`已应用${r.wheel ? '右' : '左'}轮 Kp=${r.kp.toFixed(2)} ` +
+          `Ki=${r.ki.toFixed(2)} Kd=0（直接写入，无回读）`, 'ok');
+}
+
+function tuneSaveCsv() {
+  if (!app.tuneResults.length) return;
+  const header = ['wheel', 'region_rpm', 'target_rpm', 'baseline_pwm', 'step_pwm',
+                  'K_rpm_per_pwm', 'tau_s', 'theta_s', 'r2', 'kp', 'ki', 'kd',
+                  'limited', 'pm_deg', 'gm_db', 'score', 'reasons'];
+  const lines = [header.join(',')];
+  for (const r of app.tuneResults) {
+    lines.push([
+      r.wheel, r.regionRpm.toFixed(1), r.targetRpm, r.baselinePwm, r.stepPwm,
+      r.K.toFixed(6), r.tau.toFixed(4), r.theta.toFixed(4), r.r2.toFixed(4),
+      r.kp.toFixed(3), r.ki.toFixed(4), r.kd.toFixed(2), r.limited ? 1 : 0,
+      r.pm.toFixed(1), Number.isFinite(r.gm) ? r.gm.toFixed(2) : '',
+      r.score, '"' + r.reasons.join('; ') + '"'
+    ].join(','));
+  }
+  const blob = new Blob(['﻿' + lines.join('\n')], {type: 'text/csv;charset=utf-8'});
+  const anchor = document.createElement('a');
+  anchor.href = URL.createObjectURL(blob);
+  anchor.download = `car_tune_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(anchor.href), 1000);
+  try { localStorage.setItem('car-console-tune-v1', JSON.stringify(app.tuneResults)); } catch (_) {}
+  tuneLog('结果已保存到本页并导出 CSV', 'ok');
+}
+
+/* ============================================================
+   外环位置环：命令 8 写增益，命令 7 运行时开关 + 相对位置阶跃
+   对象：rpm -> 位置，G_o = (1/60) / (s (T_c s + 1))
+   T_c 取内环闭环时间常数 1/ωc；外环带宽取内环的 1/5。
+   ============================================================ */
+function setOuterParam(wheel, name, value) {
+  const input = $(`${name}${wheel}`), range = $(`${name}${wheel}Range`);
+  if (!input || !Number.isFinite(value)) return;
+  const v = Math.round(Math.max(0, Math.min(655.35, value)) * 100) / 100;
+  input.value = String(v);
+  if (range) {
+    const max = Math.max(Number(range.max) || 0, v);
+    range.max = String(max);
+    range.value = String(Math.min(v, max));
+  }
+}
+
+function outerPidFrame(wheel, kp, ki, kd) {
+  const vals = [kp, ki, kd].map(x => Math.round(x * 100));
+  if (vals.some(v => !Number.isFinite(v) || v < 0 || v > 65535)) {
+    throw new Error('外环 PID 必须在 0~655.35 之间');
+  }
+  return frame(8, [
+    wheel,
+    (vals[0] >> 8) & 0xff, vals[0] & 0xff,
+    (vals[1] >> 8) & 0xff, vals[1] & 0xff,
+    (vals[2] >> 8) & 0xff, vals[2] & 0xff
+  ]);
+}
+
+function outerFrame(enable, leftRev, rightRev) {
+  const left = Math.max(-5000, Math.min(5000, Math.round(leftRev * 100)));
+  const right = Math.max(-5000, Math.min(5000, Math.round(rightRev * 100)));
+  return frame(7, [
+    enable ? 1 : 0,
+    (left >> 8) & 0xff, left & 0xff,
+    (right >> 8) & 0xff, right & 0xff
+  ]);
+}
+
+async function writeOuterPid(wheel) {
+  if (!app.connected || app.armed || app.pendingArm || app.stopRetries ||
+      app.tuning.active || app.outerOn) {
+    tuneLog('先停止、关闭外环并取消使能，再写外环 PID', 'warn');
+    return;
+  }
+  const state = app.lastSample ? Math.round(app.lastSample[0]) : null;
+  if (state !== 0 || performance.now() - app.lastRx > RX_STALE_MS) {
+    tuneLog('等待“停止”状态回传后再写外环 PID', 'warn');
+    return;
+  }
+  const read = id => {
+    const raw = $(id).value.trim();
+    return raw === '' ? NaN : Number(raw);
+  };
+  const kp = read(`okp${wheel}`), ki = read(`oki${wheel}`), kd = read(`okd${wheel}`);
+  const vals = [kp, ki, kd];
+  if (!vals.every(x => Number.isFinite(x) && x >= 0 && x <= 655.35) ||
+      vals.some(x => Math.abs(x * 100 - Math.round(x * 100)) > 1e-6)) {
+    tuneLog('外环 PID 必须在 0~655.35 且最多两位小数', 'warn');
+    return;
+  }
+  try {
+    if (await send(outerPidFrame(wheel, kp, ki, kd))) {
+      saveParams(true);
+      tuneLog(`${wheel ? '右' : '左'}轮外环 PID 已写入：${kp} / ${ki} / ${kd}`, 'ok');
+    } else {
+      tuneLog('外环 PID 发送失败', 'error');
+    }
+  } catch (err) {
+    tuneLog(err.message, 'error');
+  }
+}
+
+function computeOuterGains() {
+  const inner = app.tuneResults[app.tuneSelected];
+  const wc = inner && Number.isFinite(inner.wc) && inner.wc > 0 ? inner.wc : 6.67;
+  const Tc = 1 / wc;
+  const wOuter = wc / 5;
+  const Ko = 1 / 60;
+  let kp = 0.7 * wOuter * Math.sqrt(1 + (wOuter * Tc) * (wOuter * Tc)) / Ko;
+  const kiC = kp * wOuter / 5;
+  let ki = kiC * 0.005;
+  kp = Math.min(655.35, Math.max(0, kp));
+  ki = Math.min(655.35, Math.max(0, ki));
+  for (const w of [0, 1]) {
+    setOuterParam(w, 'okp', kp);
+    setOuterParam(w, 'oki', ki);
+    setOuterParam(w, 'okd', 0);
+  }
+
+  const mag = w => Math.hypot(kp, kiC / w) * Ko / (w * Math.hypot(1, w * Tc));
+  const ph = w => -Math.PI + Math.atan(w * kp / kiC) - Math.atan(w * Tc);
+  let wcOuter = 0;
+  for (let w = 0.01; w < 500; w *= 1.005) {
+    if (mag(w) <= 1) { wcOuter = w; break; }
+  }
+  const pm = wcOuter ? 180 + ph(wcOuter) * 180 / Math.PI : 0;
+  let gm = Infinity;
+  if (wcOuter) {
+    for (let w = wcOuter; w < 5000; w *= 1.005) {
+      if (ph(w) <= -Math.PI) { gm = -20 * Math.log10(mag(w)); break; }
+    }
+  }
+  const verdict = pm >= 45 && pm <= 70 ? '合理' : (pm < 45 ? '偏激进' : '偏保守');
+  outerStatusEl.textContent =
+    `Kp=${kp.toFixed(1)} Ki=${ki.toFixed(3)} · PM≈${pm.toFixed(0)}° ` +
+    `GM≈${Number.isFinite(gm) ? gm.toFixed(1) + ' dB' : '∞'} · ${verdict}`;
+  tuneLog(`外环计算：${inner ? '内环区域 ' + inner.regionRpm.toFixed(1) + ' rpm' : '默认内环带宽'}，` +
+          `Kp=${kp.toFixed(2)} Ki=${ki.toFixed(3)}，PM≈${pm.toFixed(0)}°（${verdict}）`, 'info');
+}
+
+function updateOuterUi() {
+  if (!btnOuterToggle) return;
+  btnOuterToggle.textContent = app.outerOn ? '关闭外环' : '启用外环';
+  btnOuterToggle.classList.toggle('danger', app.outerOn);
+}
+
+async function toggleOuter() {
+  if (!app.armed) {
+    tuneLog('先点击“使能”进入运行状态，再启用外环', 'warn');
+    return;
+  }
+  if (!app.outerOn) {
+    const speeds = app.lastFast ? [app.lastFast.l, app.lastFast.r] : [0, 0];
+    if (Math.abs(speeds[0]) > 10 || Math.abs(speeds[1]) > 10) {
+      tuneLog('车轮未停住（>10 rpm），不能启用外环', 'warn');
+      return;
+    }
+    const step = Number(outerStep.value);
+    if (!(step >= 0.1 && step <= 20)) { tuneLog('位置阶跃需在 0.1~20 rev', 'warn'); return; }
+    const ok = await send(outerFrame(true, step, step));
+    if (!ok) { tuneLog('外环启用命令发送失败', 'error'); return; }
+    app.outerOn = true;
+    updateOuterUi();
+    outerStatusEl.textContent = `外环已启用：阶跃 ${step} rev（相对当前位置）`;
+    tuneLog(`外环已启用，位置阶跃 ${step} rev；再次点击按钮关闭`, 'ok');
+  } else {
+    const ok = await send(outerFrame(false, 0, 0));
+    app.outerOn = false;
+    updateOuterUi();
+    outerStatusEl.textContent = ok ? '外环已关闭' : '外环关闭命令发送失败';
+    tuneLog(ok ? '外环已关闭' : '外环关闭命令发送失败', ok ? 'ok' : 'error');
+  }
 }
 
 function renderSmoothStatus(wheel, metrics) {
@@ -1561,12 +2309,15 @@ function renderSmoothStatus(wheel, metrics) {
     return;
   }
   metricsEl.textContent =
-    `${metrics.rpm.toFixed(1)} rpm · PWM ${metrics.pwm.toFixed(1)}% · ` +
+    `${metrics.rpm.toFixed(1)} rpm · ` +
+    (HAS_PWM ? `PWM ${metrics.pwm.toFixed(1)}% · ` : '') +
     `CV ${metrics.cv.toFixed(1)}% · p10–90 ${metrics.pp.toFixed(1)}% · ` +
-    `PWMσ ${metrics.pwmStd.toFixed(2)}% · n ${metrics.samples}`;
+    (HAS_PWM ? `PWMσ ${metrics.pwmStd.toFixed(2)}% · ` : '') +
+    `n ${metrics.samples}`;
   metricsEl.title =
     `窗口 ${metrics.span.toFixed(1)} s；目标 ${metrics.ref.toFixed(1)} rpm；` +
-    `转速斜率 ${metrics.slope.toFixed(1)} rpm/s；PWM 斜率 ${metrics.pwmSlope.toFixed(2)} %/s`;
+    `转速斜率 ${metrics.slope.toFixed(1)} rpm/s` +
+    (HAS_PWM ? `；PWM 斜率 ${metrics.pwmSlope.toFixed(2)} %/s` : '');
 }
 
 function updateStableButtons() {
@@ -1786,7 +2537,8 @@ function exportCsv() {
   if (!app.rows.length) { log('没有回传数据可导出', 'warn'); return; }
   const header = ['time_s', 'state', 'fault', 'left_ref', 'left_rpm', 'right_ref', 'right_rpm',
                   'left_pwm', 'right_pwm', 'result', 'frames',
-                  'left_kp', 'left_ki', 'left_kd', 'right_kp', 'right_ki', 'right_kd'];
+                  'left_kp', 'left_ki', 'left_kd', 'right_kp', 'right_ki', 'right_kd',
+                  'left_pos', 'right_pos'];
   const lines = [header.join(',')];
   for (const r of app.rows) lines.push(r.join(','));
   const blob = new Blob([lines.join('\n')], {type: 'text/csv;charset=utf-8'});
@@ -1815,6 +2567,12 @@ btnExportStable.addEventListener('click', () => exportStableCsv());
 btnExportL.addEventListener('click', () => exportStableCsv('L'));
 btnExportR.addEventListener('click', () => exportStableCsv('R'));
 btnClearStable.addEventListener('click', clearStablePoints);
+$('btnSaveParams').addEventListener('click', () => saveParams(false));
+$('btnReloadParams').addEventListener('click', () => loadParams(false));
+btnTuneStart.addEventListener('click', tuneStart);
+btnTuneAbort.addEventListener('click', () => tuningAbort('用户中止'));
+btnTuneApply.addEventListener('click', tuneApply);
+btnTuneSave.addEventListener('click', tuneSaveCsv);
 autoRecord.addEventListener('change', () => {
   app.autoRecord = autoRecord.checked;
   log(app.autoRecord ? '自动记录已开启' : '自动记录已关闭', 'info');
@@ -1841,6 +2599,11 @@ setRpm(60);
 document.querySelectorAll('[data-pid]').forEach(btn => {
   btn.addEventListener('click', () => writePid(parseInt(btn.dataset.pid, 10)));
 });
+document.querySelectorAll('[data-outerpid]').forEach(btn => {
+  btn.addEventListener('click', () => writeOuterPid(Number(btn.dataset.outerpid)));
+});
+btnOuterCalc.addEventListener('click', computeOuterGains);
+btnOuterToggle.addEventListener('click', toggleOuter);
 
 tabInner.addEventListener('click', () => selectPidTab('inner'));
 tabOuter.addEventListener('click', () => selectPidTab('outer'));
@@ -1851,6 +2614,7 @@ for (const wheel of [0, 1]) {
     setParam(wheel, name, Number(paramInput(wheel, name).value));
   }
 }
+loadParams(true);              /* 启动时填入本页已保存的参数（不自动写入小车） */
 selectPidTab('inner');
 
 /* 模式按钮：WASD 与摇杆互斥，默认 WASD。 */
@@ -1988,6 +2752,8 @@ document.querySelectorAll('[data-curves]').forEach(button => {
 syncCurveControls();
 renderStableTables();
 resetStableUi();
+renderTuneResults();
+updateOuterUi();
 
 /* ============================================================
    100 ms 周期：发送轮速、超时保护、按钮刷新
@@ -2014,7 +2780,11 @@ setInterval(() => {
     stop();
   }
 
-  if (app.armed) drive();
+  if (app.tuning.active) {
+    tuningTick();
+  } else if (app.armed) {
+    drive();
+  }
 
   if (age === Infinity) {
     ageVal.textContent = '--';

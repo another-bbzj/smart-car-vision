@@ -125,7 +125,8 @@ typedef struct
     Car_PidInc_Struct pid_speed[2];   /* 内环速度环：增量式 PID，下标 0 左、1 右 */
     Car_Pid_Struct pid_position[2];   /* 外环位置环：位置式 PID，下标 0 左、1 右 */
     float position[2];        /* 累计位置，单位输出轴圈数（rev） */
-    float position_target[2]; /* 外环目标位置，单位 rev，当前无协议来源 */
+    float position_target[2]; /* 外环目标位置，单位 rev，由命令 7 设置 */
+    uint8_t outer_enable;     /* 1 = 外环位置环参与控制；由命令 7 运行时切换 */
     float target[2];          /* 目标转速，单位 rpm，下标 0 左、1 右 */
     float reference[2];       /* 内环转速给定，单位 rpm，等于本拍 target */
     float speed[2];           /* 滤波后的实测转速，单位 rpm */
@@ -202,6 +203,32 @@ int Car_StartRace(Car_Core *c);
  * 备注信息：新参数先在临时对象上校验，全部合法才整体生效；外环不开放。
  */
 uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd);
+
+/*
+ * 函数名称：Car_SetOuterPid
+ * 函数功能：改写指定轮的外环位置环增益（仅在 STOP 状态接受）。
+ * 参数说明：c     —— 控制对象；
+ *           wheel —— 轮号，0 左轮、1 右轮；
+ *           kp/ki/kd —— 位置环增益，单位 rpm/rev 与 5 ms 离散约定。
+ * 返回参数：0 成功；1 不是 STOP；2 轮号或增益非法。
+ * 备注信息：外环输出是内环转速给定，限幅 BOARD_RPM_LIMIT；积分上限取
+ *           PID_POS_I_FRACTION × 该限幅，避免积分单独打满给定。
+ */
+uint8_t Car_SetOuterPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd);
+
+/*
+ * 函数名称：Car_SetOuter
+ * 函数功能：运行时启用/关闭外环，并给左右轮设置相对位置阶跃。
+ * 参数说明：c              —— 控制对象；
+ *           enable         —— 1 启用，0 关闭；
+ *           left_step_rev  —— 左轮相对当前位置的位移，单位 rev；
+ *           right_step_rev —— 右轮相对位移。
+ * 返回参数：0 成功；1 不是 RUN；2 参数非法（位移超 ±50 rev、首次启用时
+ *           车轮未停住、或正在开环测试）。
+ * 备注信息：只在 RUN 状态操作；首次启用要求双轮实测低于 10 rpm，避免
+ *           行驶中硬切。关闭时位置目标回落到当前位置并复位外环积分。
+ */
+uint8_t Car_SetOuter(Car_Core *c, uint8_t enable, float left_step_rev, float right_step_rev);
 
 /*
  * 函数名称：Car_SetOpenLoop

@@ -268,6 +268,7 @@ static void reset_motion(Car_Core *c)
 
     speed_window_clear(c);                           /* 双轮窗口同步清空 */
     open_loop_clear(c);                              /* 退出开环测试 */
+    c->outer_enable = 0U;                            /* 退出外环位置控制 */
 
     for (i = 0; i < 2; i++)
     {
@@ -376,8 +377,16 @@ void Car_Init(Car_Core *c)
             Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 低速调度配置失败 */
         }
 
+        if (!Car_PidInc_set_integral_cut(&c->pid_speed[i],
+                                         PID_I_CUT_IN_RPM,
+                                         PID_I_CUT_OUT_RPM))
+        {
+            Car_Fault(c, CAR_CONTROLLER_FAULT);    /* 大误差积分冻结配置失败 */
+        }
+
         /* 外环：位置式位置 PID，输出是内环转速给定，因此限幅用转速上限。
-         * 默认增益全 0，只有 PID_CASCADE_OUTER_ENABLE=1 时才参与控制。 */
+         * 默认增益全 0；由命令 7 的运行时开关 outer_enable 决定是否参与控制。
+         * 积分上限取 0.2 × 转速限幅，避免积分单独打满内环给定。 */
         Car_Pid_init(&c->pid_position[i],
                      PID_POS_DEFAULT_KP,
                      PID_POS_DEFAULT_KI,
@@ -387,7 +396,7 @@ void Car_Init(Car_Core *c)
         if (!Car_Pid_configure(&c->pid_position[i],
                                PID_SETPOINT_WEIGHT,
                                PID_D_TAU_S,
-                               1.0f,
+                               PID_POS_I_FRACTION,
                                0.0f,
                                0.0f,
                                0.0f))
@@ -506,7 +515,99 @@ uint8_t Car_SetPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
     {
         return 2;
     }
+    if (!Car_PidInc_set_integral_cut(&next,
+                                     PID_I_CUT_IN_RPM,
+                                     PID_I_CUT_OUT_RPM))
+    {
+        return 2;
+    }
     c->pid_speed[wheel] = next;      /* 蓝牙命令 4 只写内环速度环 */
+    return 0;
+}
+
+/*
+ * 函数名称：Car_SetOuterPid
+ * 函数功能：改写指定轮的外环位置环增益（仅在 STOP 状态接受）。
+ * 参数说明：c     —— 控制对象；
+ *           wheel —— 轮号，0 左轮、1 右轮；
+ *           kp/ki/kd —— 位置环增益，单位 rpm/rev 与 5 ms 离散约定。
+ * 返回参数：0 成功；1 不是 STOP；2 轮号或增益非法。
+ * 备注信息：外环输出是内环转速给定，限幅 BOARD_RPM_LIMIT；积分上限取
+ *           PID_POS_I_FRACTION × 该限幅，避免积分单独打满给定。
+ */
+uint8_t Car_SetOuterPid(Car_Core *c, unsigned wheel, float kp, float ki, float kd)
+{
+    Car_Pid_Struct next;
+
+    if (c->state != CAR_STOP) return 1;
+    if (wheel > 1U ||
+        !Car_Pid_init(&next, kp, ki, kd, BOARD_RPM_LIMIT) ||
+        !Car_Pid_configure(&next, PID_SETPOINT_WEIGHT, PID_D_TAU_S,
+                           PID_POS_I_FRACTION, 0.0f, 0.0f, 0.0f))
+    {
+        return 2;
+    }
+    c->pid_position[wheel] = next;
+    return 0;
+}
+
+/*
+ * 函数名称：Car_SetOuter
+ * 函数功能：运行时启用/关闭外环，并给左右轮设置相对位置阶跃。
+ * 参数说明：c              —— 控制对象；
+ *           enable         —— 1 启用，0 关闭；
+ *           left_step_rev  —— 左轮相对当前位置的位移，单位 rev；
+ *           right_step_rev —— 右轮相对位移。
+ * 返回参数：0 成功；1 不是 RUN；2 参数非法（位移超 ±50 rev、首次启用时
+ *           车轮未停住、或正在开环测试）。
+ * 备注信息：只在 RUN 状态操作；首次启用要求双轮实测低于 10 rpm，避免
+ *           行驶中硬切。关闭时位置目标回落到当前位置并复位外环积分。
+ */
+uint8_t Car_SetOuter(Car_Core *c, uint8_t enable, float left_step_rev, float right_step_rev)
+{
+    unsigned i;
+
+    if (c->state != CAR_RUN) return 1;
+    if (enable > 1U) return 2;
+    if (left_step_rev != left_step_rev || right_step_rev != right_step_rev ||
+        left_step_rev < -50.0f || left_step_rev > 50.0f ||
+        right_step_rev < -50.0f || right_step_rev > 50.0f)
+    {
+        return 2;
+    }
+    if (c->open_loop[0] || c->open_loop[1]) return 2;
+
+    if (enable)
+    {
+        if (!c->outer_enable &&
+            (absolute(c->speed[0]) > 10.0f || absolute(c->speed[1]) > 10.0f))
+        {
+            return 2;
+        }
+        for (i = 0; i < 2; i++)
+        {
+            c->position_target[i] = c->position[i] +
+                                    ((i == 0U) ? left_step_rev : right_step_rev);
+            Car_Pid_reset(&c->pid_position[i]);
+            Car_PidInc_reset(&c->pid_speed[i]);
+        }
+        c->target[0] = 0.0f;
+        c->target[1] = 0.0f;
+        c->reference[0] = 0.0f;
+        c->reference[1] = 0.0f;
+        c->outer_enable = 1U;
+    }
+    else
+    {
+        for (i = 0; i < 2; i++)
+        {
+            c->position_target[i] = c->position[i];
+            Car_Pid_reset(&c->pid_position[i]);
+        }
+        c->outer_enable = 0U;
+    }
+
+    c->link_us = 0U;
     return 0;
 }
 
@@ -782,24 +883,26 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count, uint32_t d
         else
         {
             /*
-             * 外环位置式位置环。默认由 PID_CASCADE_OUTER_ENABLE = 0 关闭：
-             * 此时位置环不参与控制，内环直接跟随规划器参考转速。
-             * 启用后位置误差换算为内环转速给定，并受 BOARD_RPM_LIMIT 限幅。
+             * 外环位置式位置环。运行时开关 outer_enable 为 1 时，位置误差
+             * 换算为内环转速给定，并受 BOARD_RPM_LIMIT 限幅；为 0 时内环
+             * 直接跟随 target。
              */
-#if PID_CASCADE_OUTER_ENABLE
-            c->reference[i] = Car_Pid_update_dt(&c->pid_position[i],
-                                                c->position_target[i],
-                                                c->position[i],
-                                                0.0f,
-                                                dt);
-#endif
+            if (c->outer_enable)
+            {
+                c->reference[i] = Car_Pid_update_dt(&c->pid_position[i],
+                                                    c->position_target[i],
+                                                    c->position[i],
+                                                    0.0f,
+                                                    dt);
+            }
 
             /*
              * 单轮目标和参考均归零后撤去驱动、清除积分；
-             * 不以 PID 主动“抱住”零速。此处清零的是控制输出，
-             * 车轮是否已经停住仍以 speed 反馈判断。
+             * 不以 PID 主动“抱住”零速。外环启用时不能走这条分支，
+             * 否则外环的输出一旦为 0 就会被每拍复位。
              */
-            if (c->reference[i] == 0.0f && c->target[i] == 0.0f)
+            if (!c->outer_enable &&
+                c->reference[i] == 0.0f && c->target[i] == 0.0f)
             {
                 c->output[i] = 0.0f;
                 c->output_last[i] = 0.0f;
@@ -809,23 +912,14 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count, uint32_t d
             else
             {
                 /*
-                 * 内环增量式速度 PID。外环关闭时用规划器加速度做 Ka 前馈；
-                 * 外环启用时内环给定来自位置环，规划器加速度不再对应它，
-                 * 因此按 0 处理。
+                 * 内环增量式速度 PID。参考规划器已删除，外环启用时内环
+                 * 给定来自位置环，两者都没有规划加速度，因此前馈按 0。
                  */
-#if PID_CASCADE_OUTER_ENABLE
                 c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
                                                     c->reference[i],
                                                     c->speed[i],
                                                     0.0f,
                                                     dt);
-#else
-                c->output[i] = Car_PidInc_update_dt(&c->pid_speed[i],
-                                                    c->reference[i],
-                                                    c->speed[i],
-                                                    0.0f,   /* 加速度前馈：参考规划器已删除 */
-                                                    dt);
-#endif
             }
         }
 

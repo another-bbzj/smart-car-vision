@@ -1,33 +1,33 @@
 /*********************************************************************************************************************
-* NEUQ Library ¼´£¨¶«±±´óÑ§ÇØ»Êµº·ÖĞ£ ¿ªÔ´¿â£©ÊÇÒ»¸ö»ùÓÚ¹Ù·½ HAL ¿âµÄµÚÈı·½¿ªÔ´¿â
+* NEUQ Library å³ï¼ˆä¸œåŒ—å¤§å­¦ç§¦çš‡å²›åˆ†æ ¡ å¼€æºåº“ï¼‰æ˜¯ä¸€ä¸ªåŸºäºå®˜æ–¹ HAL åº“çš„ç¬¬ä¸‰æ–¹å¼€æºåº“
 * Copyright (c) 2025 NEUQ SmartCar Lab
 *
-* ±¾ÎÄ¼şÊÇ NEUQ Library µÄÒ»²¿·Ö
+* æœ¬æ–‡ä»¶æ˜¯ NEUQ Library çš„ä¸€éƒ¨åˆ†
 *
-* NEUQ Library ÊÇÃâ·ÑÈí¼ş
-* Äú¿ÉÒÔ¸ù¾İ×ÔÓÉÈí¼ş»ù½ğ»á·¢²¼µÄ GPL£¨GNU General Public License£¬¼´ GNUÍ¨ÓÃ¹«¹²Ğí¿ÉÖ¤£©µÄÌõ¿î
-* ¼´ GPL µÄµÚ3°æ£¨¼´ GPL3.0£©»ò£¨ÄúÑ¡ÔñµÄ£©ÈÎºÎºóÀ´µÄ°æ±¾£¬ÖØĞÂ·¢²¼ºÍ/»òĞŞ¸ÄËü
+* NEUQ Library æ˜¯å…è´¹è½¯ä»¶
+* æ‚¨å¯ä»¥æ ¹æ®è‡ªç”±è½¯ä»¶åŸºé‡‘ä¼šå‘å¸ƒçš„ GPLï¼ˆGNU General Public Licenseï¼Œå³ GNUé€šç”¨å…¬å…±è®¸å¯è¯ï¼‰çš„æ¡æ¬¾
+* å³ GPL çš„ç¬¬3ç‰ˆï¼ˆå³ GPL3.0ï¼‰æˆ–ï¼ˆæ‚¨é€‰æ‹©çš„ï¼‰ä»»ä½•åæ¥çš„ç‰ˆæœ¬ï¼Œé‡æ–°å‘å¸ƒå’Œ/æˆ–ä¿®æ”¹å®ƒ
 *
-* ±¾¿ªÔ´¿âµÄ·¢²¼ÊÇÏ£ÍûËüÄÜ·¢»Ó×÷ÓÃ£¬µ«²¢Î´¶ÔÆä×÷ÈÎºÎµÄ±£Ö¤
-* ÉõÖÁÃ»ÓĞÒşº¬µÄÊÊÏúĞÔ»òÊÊºÏÌØ¶¨ÓÃÍ¾µÄ±£Ö¤
-* ¸ü¶àÏ¸½ÚÇë²Î¼û GPL
+* æœ¬å¼€æºåº“çš„å‘å¸ƒæ˜¯å¸Œæœ›å®ƒèƒ½å‘æŒ¥ä½œç”¨ï¼Œä½†å¹¶æœªå¯¹å…¶ä½œä»»ä½•çš„ä¿è¯
+* ç”šè‡³æ²¡æœ‰éšå«çš„é€‚é”€æ€§æˆ–é€‚åˆç‰¹å®šç”¨é€”çš„ä¿è¯
+* æ›´å¤šç»†èŠ‚è¯·å‚è§ GPL
 *
-* ÄúÓ¦¸ÃÔÚÊÕµ½±¾¿ªÔ´¿âµÄÍ¬Ê±ÊÕµ½Ò»·İ GPL µÄ¸±±¾
-* Èç¹ûÃ»ÓĞ£¬Çë²ÎÔÄ<https://www.gnu.org/licenses/>
+* æ‚¨åº”è¯¥åœ¨æ”¶åˆ°æœ¬å¼€æºåº“çš„åŒæ—¶æ”¶åˆ°ä¸€ä»½ GPL çš„å‰¯æœ¬
+* å¦‚æœæ²¡æœ‰ï¼Œè¯·å‚é˜…<https://www.gnu.org/licenses/>
 *
-* ¶îÍâ×¢Ã÷£º
-* ±¾¿ªÔ´¿âÊ¹ÓÃ GPL3.0 ¿ªÔ´Ğí¿ÉÖ¤Ğ­Òé 
-* »¶Ó­¸÷Î»Ê¹ÓÃ²¢´«²¥±¾³ÌĞò µ«ĞŞ¸ÄÄÚÈİÊ±±ØĞë±£Áô×÷ÕßµÄ°æÈ¨ÉùÃ÷£¨¼´±¾ÉùÃ÷£©
+* é¢å¤–æ³¨æ˜ï¼š
+* æœ¬å¼€æºåº“ä½¿ç”¨ GPL3.0 å¼€æºè®¸å¯è¯åè®® 
+* æ¬¢è¿å„ä½ä½¿ç”¨å¹¶ä¼ æ’­æœ¬ç¨‹åº ä½†ä¿®æ”¹å†…å®¹æ—¶å¿…é¡»ä¿ç•™ä½œè€…çš„ç‰ˆæƒå£°æ˜ï¼ˆå³æœ¬å£°æ˜ï¼‰
 *
-* ÎÄ¼şÃû³Æ          NEUQ_PWM
-* ×éÖ¯Ãû³Æ          ¶«±±´óÑ§ÇØ»Êµº·ÖĞ£ ÖÇÄÜ³µÊµÑéÊÒ
-* °æ±¾ĞÅÏ¢          ²é¿´ libraries/doc ÎÄ¼ş¼ĞÄÚ version ÎÄ¼ş °æ±¾ËµÃ÷
-* ¿ª·¢»·¾³          MDK-ARM v5.38
-* ÊÊÓÃÆ½Ì¨          STM32F407VE
+* æ–‡ä»¶åç§°          NEUQ_PWM
+* ç»„ç»‡åç§°          ä¸œåŒ—å¤§å­¦ç§¦çš‡å²›åˆ†æ ¡ æ™ºèƒ½è½¦å®éªŒå®¤
+* ç‰ˆæœ¬ä¿¡æ¯          æŸ¥çœ‹ libraries/doc æ–‡ä»¶å¤¹å†… version æ–‡ä»¶ ç‰ˆæœ¬è¯´æ˜
+* å¼€å‘ç¯å¢ƒ          MDK-ARM v5.38
+* é€‚ç”¨å¹³å°          STM32F407VE
 *
-* ĞŞ¸Ä¼ÇÂ¼
-* ÈÕÆÚ              ×÷Õß                ±¸×¢
-* 2025-09-05        ÕÅÈğ        first version
+* ä¿®æ”¹è®°å½•
+* æ—¥æœŸ              ä½œè€…                å¤‡æ³¨
+* 2025-09-05        å¼ ç‘        first version
 ********************************************************************************************************************/
 #include "NEUQ_lib_include.h"
 
@@ -38,13 +38,13 @@ TIM_HandleTypeDef TIM_4_Handle={0};
 TIM_HandleTypeDef TIM_8_Handle={0};
 
 //============================================================================
-// º¯Êı¼ò½é     PWM ³õÊ¼»¯
-// ²ÎÊıËµÃ÷     PWM_Port_select     Ñ¡Ôñ PWM Òı½Å
-// ²ÎÊıËµÃ÷     frequency           ÉèÖÃÆµÂÊ Í¬¸öÍ¨µÀÖ»ÓĞ×îºóÒ»´ÎÉèÖÃÉúĞ§
-// ²ÎÊıËµÃ÷     duty                ÉèÖÃÕ¼¿Õ±È
-// ·µ»Ø²ÎÊı     void
-// Ê¹ÓÃÊ¾Àı£º   NEUQ_PWM_init(TIM2_CH1_PA5,1000,5000);//³õÊ¼»¯TIM2_CH1_PA5Îª1kHz£¬50%Õ¼¿Õ±È
-// ±¸×¢ĞÅÏ¢     PWM_DUTY_MAXºê¶¨ÒåÔÚNEUQ_PWM.h  Ä¬ÈÏÎª10000
+// å‡½æ•°ç®€ä»‹     PWM åˆå§‹åŒ–
+// å‚æ•°è¯´æ˜     PWM_Port_select     é€‰æ‹© PWM å¼•è„š
+// å‚æ•°è¯´æ˜     frequency           è®¾ç½®é¢‘ç‡ åŒä¸ªé€šé“åªæœ‰æœ€åä¸€æ¬¡è®¾ç½®ç”Ÿæ•ˆ
+// å‚æ•°è¯´æ˜     duty                è®¾ç½®å ç©ºæ¯”
+// è¿”å›å‚æ•°     void
+// ä½¿ç”¨ç¤ºä¾‹ï¼š   NEUQ_PWM_init(TIM2_CH1_PA5,1000,5000);//åˆå§‹åŒ–TIM2_CH1_PA5ä¸º1kHzï¼Œ50%å ç©ºæ¯”
+// å¤‡æ³¨ä¿¡æ¯     PWM_DUTY_MAXå®å®šä¹‰åœ¨NEUQ_PWM.h  é»˜è®¤ä¸º10000
 //============================================================================
 void NEUQ_PWM_init(PWM_Ports_ENUM PWM_Port_select,uint32_t frequency,uint32_t duty){
     TIM_HandleTypeDef *Handle_use=NULL;
@@ -53,7 +53,7 @@ void NEUQ_PWM_init(PWM_Ports_ENUM PWM_Port_select,uint32_t frequency,uint32_t du
     uint32_t AF_use=0;
     uint32_t Channel_use=0xFFFFFFFF;
 
-    /*Ñ¡ÔñTIMÄ£¿é*/
+    /*é€‰æ‹©TIMæ¨¡å—*/
     switch(((uint32_t)PWM_Port_select)/10){
         case 0:{
             __HAL_RCC_TIM1_CLK_ENABLE();
@@ -92,10 +92,10 @@ void NEUQ_PWM_init(PWM_Ports_ENUM PWM_Port_select,uint32_t frequency,uint32_t du
         }
     }
 
-    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//¶ÔPWMÍ¨µÀ½øĞĞÓ³Éä
+    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//å¯¹PWMé€šé“è¿›è¡Œæ˜ å°„
     
-    /*ÅäÖÃGPIO*/
-    //Æô¶¯GPIOÊ±ÖÓ
+    /*é…ç½®GPIO*/
+    //å¯åŠ¨GPIOæ—¶é’Ÿ
     if (gpio_group == GPIOA)       __HAL_RCC_GPIOA_CLK_ENABLE();
     else if (gpio_group == GPIOB)  __HAL_RCC_GPIOB_CLK_ENABLE();
     else if (gpio_group == GPIOC)  __HAL_RCC_GPIOC_CLK_ENABLE();
@@ -108,32 +108,32 @@ void NEUQ_PWM_init(PWM_Ports_ENUM PWM_Port_select,uint32_t frequency,uint32_t du
     GPIO_initure.Speed = GPIO_SPEED_FREQ_HIGH;
     GPIO_initure.Alternate=AF_use;
 
-    /*ÅäÖÃ¶¨Ê±Æ÷ÉèÖÃ*/
+    /*é…ç½®å®šæ—¶å™¨è®¾ç½®*/
 
-    uint32_t timer_clock = 84000000UL;  // Í³Ò»¶¨Ê±Æ÷Ê±ÖÓÆµÂÊ
+    uint32_t timer_clock = 84000000UL;  // ç»Ÿä¸€å®šæ—¶å™¨æ—¶é’Ÿé¢‘ç‡
     uint32_t prescaler = (timer_clock / (frequency * PWM_MAX));
-    if (prescaler > 0xFFFF) prescaler = 0xFFFF;  // ÏŞÖÆ×î´óÖµ
+    if (prescaler > 0xFFFF) prescaler = 0xFFFF;  // é™åˆ¶æœ€å¤§å€¼
 
-    if(Handle_use->Instance==TIM1 || Handle_use->Instance==TIM8){//TIM1ºÍ8ÊÇ¹ÒÔØÔÚAPB2¸ßËÙ×ÜÏßÉÏµÄ£¬ÆäËûTIMÔÚAPB1ÉÏ
-        prescaler=prescaler*2-1;//½«TIM1ºÍ8Ê±ÖÓ¶ş·ÖÆµ£¬ÕâÑùËùÓĞTIMµÄÊ±ÖÓËÙÂÊÒ»ÖÂ
+    if(Handle_use->Instance==TIM1 || Handle_use->Instance==TIM8){//TIM1å’Œ8æ˜¯æŒ‚è½½åœ¨APB2é«˜é€Ÿæ€»çº¿ä¸Šçš„ï¼Œå…¶ä»–TIMåœ¨APB1ä¸Š
+        prescaler=prescaler*2-1;//å°†TIM1å’Œ8æ—¶é’ŸäºŒåˆ†é¢‘ï¼Œè¿™æ ·æ‰€æœ‰TIMçš„æ—¶é’Ÿé€Ÿç‡ä¸€è‡´
     }
     else{
         prescaler=prescaler-1;
     }    
 
-    Handle_use->Init.Prescaler = (uint16_t)prescaler;//ÀíÂÛµÄ×îĞ¡ÆµÂÊÔ¼Îª0.128hz£¬×î´óÖµÔ¼Îª8.4khz£¬³¬¹ı´Ë·¶Î§»á±»ÏŞ·ù
-    Handle_use->Init.Period=PWM_MAX-1;//ÂúÕ¼¿Õ±ÈÎª10000£¬ĞŞ¸ÄÎª1000ºó¿ÉÒÔ½«ÉÏÊöÆµÂÊÌá¸ßÊ®±¶
-    Handle_use->Init.CounterMode=TIM_COUNTERMODE_UP;//ÏòÉÏ¼ÆÊı
-    Handle_use->Init.AutoReloadPreload=TIM_AUTORELOAD_PRELOAD_ENABLE;//×Ô¶¯×°ÔØ
+    Handle_use->Init.Prescaler = (uint16_t)prescaler;//ç†è®ºçš„æœ€å°é¢‘ç‡çº¦ä¸º0.128hzï¼Œæœ€å¤§å€¼çº¦ä¸º8.4khzï¼Œè¶…è¿‡æ­¤èŒƒå›´ä¼šè¢«é™å¹…
+    Handle_use->Init.Period=PWM_MAX-1;//æ»¡å ç©ºæ¯”ä¸º10000ï¼Œä¿®æ”¹ä¸º1000åå¯ä»¥å°†ä¸Šè¿°é¢‘ç‡æé«˜åå€
+    Handle_use->Init.CounterMode=TIM_COUNTERMODE_UP;//å‘ä¸Šè®¡æ•°
+    Handle_use->Init.AutoReloadPreload=TIM_AUTORELOAD_PRELOAD_ENABLE;//è‡ªåŠ¨è£…è½½
     HAL_TIM_PWM_Init(Handle_use);
 
     if(duty>PWM_MAX){duty=PWM_MAX;}
 
     TIM_OC_InitTypeDef sConfigOC={0};
-    sConfigOC.OCMode = TIM_OCMODE_PWM1;  // PWM Ä£Ê½ 1
-    sConfigOC.Pulse = duty;  // ÉèÖÃÕ¼¿Õ±È
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;  // Êä³ö¼«ĞÔ
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;  // ½ûÓÃ¿ìËÙÄ£Ê½
+    sConfigOC.OCMode = TIM_OCMODE_PWM1;  // PWM æ¨¡å¼ 1
+    sConfigOC.Pulse = duty;  // è®¾ç½®å ç©ºæ¯”
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;  // è¾“å‡ºææ€§
+    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;  // ç¦ç”¨å¿«é€Ÿæ¨¡å¼
     HAL_TIM_PWM_ConfigChannel(Handle_use, &sConfigOC, Channel_use);
     HAL_TIM_PWM_Start(Handle_use, Channel_use);
     /* Keep the existing GPIO level until the timer drives the requested duty. */
@@ -141,12 +141,12 @@ void NEUQ_PWM_init(PWM_Ports_ENUM PWM_Port_select,uint32_t frequency,uint32_t du
 }
 
 //============================================================================
-// º¯Êı¼ò½é     PWMÕ¼¿Õ±ÈÉèÖÃ
-// ²ÎÊıËµÃ÷     PWM_Port_select         Ñ¡Ôñ PWM Òı½Å
-// ²ÎÊıËµÃ÷     duty                    ÉèÖÃÕ¼¿Õ±È
-// ·µ»Ø²ÎÊı     void
-// Ê¹ÓÃÊ¾Àı£ºNEUQ_PWM_set_duty(TIM2_CH1_PA5,2500);//ÉèÖÃTIM2_CH1_PA5Îª25%Õ¼¿Õ±È
-// ±¸×¢ĞÅÏ¢     PWM_DUTY_MAXºê¶¨ÒåÔÚNEUQ_PWM.h  Ä¬ÈÏÎª10000
+// å‡½æ•°ç®€ä»‹     PWMå ç©ºæ¯”è®¾ç½®
+// å‚æ•°è¯´æ˜     PWM_Port_select         é€‰æ‹© PWM å¼•è„š
+// å‚æ•°è¯´æ˜     duty                    è®¾ç½®å ç©ºæ¯”
+// è¿”å›å‚æ•°     void
+// ä½¿ç”¨ç¤ºä¾‹ï¼šNEUQ_PWM_set_duty(TIM2_CH1_PA5,2500);//è®¾ç½®TIM2_CH1_PA5ä¸º25%å ç©ºæ¯”
+// å¤‡æ³¨ä¿¡æ¯     PWM_DUTY_MAXå®å®šä¹‰åœ¨NEUQ_PWM.h  é»˜è®¤ä¸º10000
 //============================================================================
 void NEUQ_PWM_set_duty(PWM_Ports_ENUM PWM_Port_select,uint32_t duty){
     TIM_HandleTypeDef *Handle_use=NULL;
@@ -154,7 +154,7 @@ void NEUQ_PWM_set_duty(PWM_Ports_ENUM PWM_Port_select,uint32_t duty){
     uint16_t gpio_pin=NULL;    
     uint32_t Channel_use=0xFFFFFFFF;
 
-    /*Ñ¡ÔñTIMÄ£¿é*/
+    /*é€‰æ‹©TIMæ¨¡å—*/
     switch(((uint32_t)PWM_Port_select)/10){
         case 0:{
             Handle_use=&TIM_1_Handle;
@@ -178,17 +178,17 @@ void NEUQ_PWM_set_duty(PWM_Ports_ENUM PWM_Port_select,uint32_t duty){
         }
     }
 
-    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//¶ÔPWMÍ¨µÀ½øĞĞÓ³Éä
+    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//å¯¹PWMé€šé“è¿›è¡Œæ˜ å°„
     if(duty>PWM_MAX){duty=PWM_MAX;}
     __HAL_TIM_SET_COMPARE(Handle_use, Channel_use, duty);
 }
 
 //============================================================================
-// º¯Êı¼ò½é     Ê¹ÄÜPWMÊä³ö
-// ²ÎÊıËµÃ÷     PWM_Port_select             Ñ¡Ôñ PWM Òı½Å
-// ·µ»Ø²ÎÊı     void
-// Ê¹ÓÃÊ¾Àı     NEUQ_PWM_enable_output(TIM2_CH1_PA5);//
-// ×¢ÒâÊÂÏî     ÎŞ
+// å‡½æ•°ç®€ä»‹     ä½¿èƒ½PWMè¾“å‡º
+// å‚æ•°è¯´æ˜     PWM_Port_select             é€‰æ‹© PWM å¼•è„š
+// è¿”å›å‚æ•°     void
+// ä½¿ç”¨ç¤ºä¾‹     NEUQ_PWM_enable_output(TIM2_CH1_PA5);//
+// æ³¨æ„äº‹é¡¹     æ— 
 //============================================================================
 void NEUQ_PWM_enable_output(PWM_Ports_ENUM PWM_Port_select){
     TIM_HandleTypeDef *Handle_use=NULL;
@@ -196,7 +196,7 @@ void NEUQ_PWM_enable_output(PWM_Ports_ENUM PWM_Port_select){
     uint16_t gpio_pin=NULL;    
     uint32_t Channel_use=0xFFFFFFFF;
 
-    /*Ñ¡ÔñTIMÄ£¿é*/
+    /*é€‰æ‹©TIMæ¨¡å—*/
     switch(((uint32_t)PWM_Port_select)/10){
         case 0:{
             Handle_use=&TIM_1_Handle;
@@ -220,16 +220,16 @@ void NEUQ_PWM_enable_output(PWM_Ports_ENUM PWM_Port_select){
         }
     }
 
-    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//¶ÔPWMÍ¨µÀ½øĞĞÓ³Éä
+    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//å¯¹PWMé€šé“è¿›è¡Œæ˜ å°„
     HAL_TIM_PWM_Start(Handle_use, Channel_use);
 }
 
 //============================================================================
-//  º¯Êı¼ò½é      ¹Ø±ÕÍ¨µÀµÄPWMÊä³ö
-//  ²ÎÊıËµÃ÷       PWM_Port_select             Ñ¡Ôñ PWM Òı½Å
-//  Ê¹ÓÃÊ¾Àı       NEUQ_PWM_diasble_output(TIM2_CH1_PA5);
-//  ·µ»Ø²ÎÊı      void
-//  ×¢ÒâÊÂÏî£ºÎŞ
+//  å‡½æ•°ç®€ä»‹      å…³é—­é€šé“çš„PWMè¾“å‡º
+//  å‚æ•°è¯´æ˜       PWM_Port_select             é€‰æ‹© PWM å¼•è„š
+//  ä½¿ç”¨ç¤ºä¾‹       NEUQ_PWM_diasble_output(TIM2_CH1_PA5);
+//  è¿”å›å‚æ•°      void
+//  æ³¨æ„äº‹é¡¹ï¼šæ— 
 //============================================================================
 void NEUQ_PWM_diasble_output(PWM_Ports_ENUM PWM_Port_select){
     TIM_HandleTypeDef *Handle_use=NULL;
@@ -237,7 +237,7 @@ void NEUQ_PWM_diasble_output(PWM_Ports_ENUM PWM_Port_select){
     uint16_t gpio_pin=NULL;    
     uint32_t Channel_use=0xFFFFFFFF;
 
-    /*Ñ¡ÔñTIMÄ£¿é*/
+    /*é€‰æ‹©TIMæ¨¡å—*/
     switch(((uint32_t)PWM_Port_select)/10){
         case 0:{
             Handle_use=&TIM_1_Handle;
@@ -261,23 +261,23 @@ void NEUQ_PWM_diasble_output(PWM_Ports_ENUM PWM_Port_select){
         }
     }
 
-    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//¶ÔPWMÍ¨µÀ½øĞĞÓ³Éä
+    PWM_Port_To_GPIO(PWM_Port_select,&gpio_group,&gpio_pin,&Channel_use);//å¯¹PWMé€šé“è¿›è¡Œæ˜ å°„
     HAL_TIM_PWM_Stop(Handle_use, Channel_use);
 }
 
 //=============================================================================
-// º¯Êı¹¦ÄÜ£ºPWM¶Ë¿ÚÓ³Éäµ½GPIOºÍ¶¨Ê±Æ÷Í¨µÀ
-// Êä    Èë£ºpwm_port Ñ¡ÔñµÄPWM¶Ë¿Ú
-//           gpio_group Ö¸ÏòGPIO×éµÄÖ¸Õë
-//           gpio_pin Ö¸ÏòGPIOÒı½ÅµÄÖ¸Õë
-//           channel Ö¸Ïò¶¨Ê±Æ÷Í¨µÀµÄÖ¸Õë
-// Ê¹ÓÃÊ¾Àı£º¼ûÄÚ²¿µ÷ÓÃ
-// ×¢ÒâÊÂÏî£ºÎŞ
+// å‡½æ•°åŠŸèƒ½ï¼šPWMç«¯å£æ˜ å°„åˆ°GPIOå’Œå®šæ—¶å™¨é€šé“
+// è¾“    å…¥ï¼špwm_port é€‰æ‹©çš„PWMç«¯å£
+//           gpio_group æŒ‡å‘GPIOç»„çš„æŒ‡é’ˆ
+//           gpio_pin æŒ‡å‘GPIOå¼•è„šçš„æŒ‡é’ˆ
+//           channel æŒ‡å‘å®šæ—¶å™¨é€šé“çš„æŒ‡é’ˆ
+// ä½¿ç”¨ç¤ºä¾‹ï¼šè§å†…éƒ¨è°ƒç”¨
+// æ³¨æ„äº‹é¡¹ï¼šæ— 
 //  =============================================================================
 void PWM_Port_To_GPIO(PWM_Ports_ENUM pwm_port, GPIO_TypeDef **gpio_group, uint16_t *gpio_pin, uint32_t *channel){
     *gpio_group = NULL;
     *gpio_pin = 0xFFFF;
-    *channel = 0xFFFFFFFF;  // ÎŞĞ§Öµ
+    *channel = 0xFFFFFFFF;  // æ— æ•ˆå€¼
 
     switch (pwm_port){
         // === TIM1 ===
@@ -391,7 +391,7 @@ void PWM_Port_To_GPIO(PWM_Ports_ENUM pwm_port, GPIO_TypeDef **gpio_group, uint16
             *gpio_group = GPIOC; *gpio_pin = GPIO_PIN_9; *channel = TIM_CHANNEL_4; break;
 
         default:
-            // ÎŞĞ§Ó³Éä
+            // æ— æ•ˆæ˜ å°„
             *gpio_group = NULL;
             *gpio_pin   = 0xFFFF;
             *channel    = 0xFFFFFFFF;

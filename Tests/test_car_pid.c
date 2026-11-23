@@ -189,29 +189,55 @@ static void test_incremental_low_speed_schedule(void)
     assert(p.low_speed_rpm == 50.0f && p.high_speed_rpm == 100.0f);
 }
 
-static void test_incremental_integral_separation(void)
+static void test_incremental_integral_softening(void)
 {
     Car_PidInc_Struct p;
     assert(Car_PidInc_init(&p, 0, 1, 0, 1000));
     assert(Car_PidInc_set_low_speed(&p, 0, 0, 1, 1, 5, 0.3f, 100));
 
-    /* 目标 50、误差 2（<5）：Ki 缩放到 0.3，积分增量 = 0.3×2 = 0.6。 */
+    /* 误差 2、带宽 5：软化系数 = 0.3 + 0.7×(2/5) = 0.58，增量 = 1.16。 */
     (void)Car_PidInc_update(&p, 50, 48);
-    check_incremental(p.ki_effective, 0.3f, "integral band ki scale");
-    check_incremental(p.integral, 0.6f, "integral band increment");
+    check_incremental(p.ki_effective, 0.58f, "softening ki scale");
+    check_incremental(p.integral, 1.16f, "softening increment");
 
-    /* 误差 6（>5）：不再分离，积分增量 = 6。 */
+    /* 误差 6（超过带宽）：恢复全增益，增量 = 6。 */
     (void)Car_PidInc_update(&p, 50, 44);
     check_incremental(p.ki_effective, 1.0f, "outside band ki full");
-    check_incremental(p.integral, 6.6f, "outside band increment");
+    check_incremental(p.integral, 7.16f, "outside band increment");
 
-    /* 目标 150（>100）：即使误差小也不分离。 */
+    /* 目标 150（>100）：即使误差小也不软化。 */
     (void)Car_PidInc_update(&p, 150, 150);
     check_incremental(p.ki_effective, 1.0f, "above band speed ki full");
 
     /* 非法缩放系数不得覆盖原配置。 */
     assert(!Car_PidInc_set_low_speed(&p, 0, 0, 1, 1, 5, -0.1f, 100));
     assert(p.integral_scale == 0.3f);
+}
+
+static void test_incremental_integral_cut(void)
+{
+    Car_PidInc_Struct p;
+    assert(Car_PidInc_init(&p, 0, 1, 0, 1000));
+    assert(Car_PidInc_set_integral_cut(&p, 60, 40));
+
+    /* 误差 100（>60）：冻结积分。 */
+    (void)Car_PidInc_update(&p, 100, 0);
+    check_incremental(p.ki_effective, 0.0f, "cut freezes ki");
+    check_incremental(p.integral, 0.0f, "cut freezes integral");
+
+    /* 误差 50（在 40~60 滞回区）：保持冻结。 */
+    (void)Car_PidInc_update(&p, 50, 0);
+    check_incremental(p.ki_effective, 0.0f, "cut hysteresis holds");
+    check_incremental(p.integral, 0.0f, "cut hysteresis integral");
+
+    /* 误差 30（<40）：恢复，增量 = 30。 */
+    (void)Car_PidInc_update(&p, 30, 0);
+    check_incremental(p.ki_effective, 1.0f, "cut releases ki");
+    check_incremental(p.integral, 30.0f, "cut releases integral");
+
+    /* 非法阈值不得覆盖原配置。 */
+    assert(!Car_PidInc_set_integral_cut(&p, 40, 60));
+    assert(p.integral_cut_in_rpm == 60.0f && p.integral_cut_out_rpm == 40.0f);
 }
 
 static void test_incremental_friction_ff(void)
@@ -274,7 +300,8 @@ int main(void)
     test_incremental_periodic_no_drift();
     test_incremental_matches_positional();
     test_incremental_low_speed_schedule();
-    test_incremental_integral_separation();
+    test_incremental_integral_softening();
+    test_incremental_integral_cut();
     test_incremental_friction_ff();
     if (incremental_failures)
     {

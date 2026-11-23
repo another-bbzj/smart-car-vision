@@ -1,63 +1,63 @@
 /*********************************************************************************************************************
-* NEUQ Library ¼´£¨¶«±±´óÑ§ÇØ»Êµº·ÖĞ£ ¿ªÔ´¿â£©ÊÇÒ»¸ö»ùÓÚ¹Ù·½ HAL ¿âµÄµÚÈı·½¿ªÔ´¿â
+* NEUQ Library å³ï¼ˆä¸œåŒ—å¤§å­¦ç§¦çš‡å²›åˆ†æ ¡ å¼€æºåº“ï¼‰æ˜¯ä¸€ä¸ªåŸºäºå®˜æ–¹ HAL åº“çš„ç¬¬ä¸‰æ–¹å¼€æºåº“
 * Copyright (c) 2025 NEUQ SmartCar Lab
 *
-* ±¾ÎÄ¼şÊÇ NEUQ Library µÄÒ»²¿·Ö
+* æœ¬æ–‡ä»¶æ˜¯ NEUQ Library çš„ä¸€éƒ¨åˆ†
 *
-* NEUQ Library ÊÇÃâ·ÑÈí¼ş
-* Äú¿ÉÒÔ¸ù¾İ×ÔÓÉÈí¼ş»ù½ğ»á·¢²¼µÄ GPL£¨GNU General Public License£¬¼´ GNUÍ¨ÓÃ¹«¹²Ğí¿ÉÖ¤£©µÄÌõ¿î
-* ¼´ GPL µÄµÚ3°æ£¨¼´ GPL3.0£©»ò£¨ÄúÑ¡ÔñµÄ£©ÈÎºÎºóÀ´µÄ°æ±¾£¬ÖØĞÂ·¢²¼ºÍ/»òĞŞ¸ÄËü
+* NEUQ Library æ˜¯å…è´¹è½¯ä»¶
+* æ‚¨å¯ä»¥æ ¹æ®è‡ªç”±è½¯ä»¶åŸºé‡‘ä¼šå‘å¸ƒçš„ GPLï¼ˆGNU General Public Licenseï¼Œå³ GNUé€šç”¨å…¬å…±è®¸å¯è¯ï¼‰çš„æ¡æ¬¾
+* å³ GPL çš„ç¬¬3ç‰ˆï¼ˆå³ GPL3.0ï¼‰æˆ–ï¼ˆæ‚¨é€‰æ‹©çš„ï¼‰ä»»ä½•åæ¥çš„ç‰ˆæœ¬ï¼Œé‡æ–°å‘å¸ƒå’Œ/æˆ–ä¿®æ”¹å®ƒ
 *
-* ±¾¿ªÔ´¿âµÄ·¢²¼ÊÇÏ£ÍûËüÄÜ·¢»Ó×÷ÓÃ£¬µ«²¢Î´¶ÔÆä×÷ÈÎºÎµÄ±£Ö¤
-* ÉõÖÁÃ»ÓĞÒşº¬µÄÊÊÏúĞÔ»òÊÊºÏÌØ¶¨ÓÃÍ¾µÄ±£Ö¤
-* ¸ü¶àÏ¸½ÚÇë²Î¼û GPL
+* æœ¬å¼€æºåº“çš„å‘å¸ƒæ˜¯å¸Œæœ›å®ƒèƒ½å‘æŒ¥ä½œç”¨ï¼Œä½†å¹¶æœªå¯¹å…¶ä½œä»»ä½•çš„ä¿è¯
+* ç”šè‡³æ²¡æœ‰éšå«çš„é€‚é”€æ€§æˆ–é€‚åˆç‰¹å®šç”¨é€”çš„ä¿è¯
+* æ›´å¤šç»†èŠ‚è¯·å‚è§ GPL
 *
-* ÄúÓ¦¸ÃÔÚÊÕµ½±¾¿ªÔ´¿âµÄÍ¬Ê±ÊÕµ½Ò»·İ GPL µÄ¸±±¾
-* Èç¹ûÃ»ÓĞ£¬Çë²ÎÔÄ<https://www.gnu.org/licenses/>
+* æ‚¨åº”è¯¥åœ¨æ”¶åˆ°æœ¬å¼€æºåº“çš„åŒæ—¶æ”¶åˆ°ä¸€ä»½ GPL çš„å‰¯æœ¬
+* å¦‚æœæ²¡æœ‰ï¼Œè¯·å‚é˜…<https://www.gnu.org/licenses/>
 *
-* ¶îÍâ×¢Ã÷£º
-* ±¾¿ªÔ´¿âÊ¹ÓÃ GPL3.0 ¿ªÔ´Ğí¿ÉÖ¤Ğ­Òé 
-* »¶Ó­¸÷Î»Ê¹ÓÃ²¢´«²¥±¾³ÌĞò µ«ĞŞ¸ÄÄÚÈİÊ±±ØĞë±£Áô×÷ÕßµÄ°æÈ¨ÉùÃ÷£¨¼´±¾ÉùÃ÷£©
+* é¢å¤–æ³¨æ˜ï¼š
+* æœ¬å¼€æºåº“ä½¿ç”¨ GPL3.0 å¼€æºè®¸å¯è¯åè®® 
+* æ¬¢è¿å„ä½ä½¿ç”¨å¹¶ä¼ æ’­æœ¬ç¨‹åº ä½†ä¿®æ”¹å†…å®¹æ—¶å¿…é¡»ä¿ç•™ä½œè€…çš„ç‰ˆæƒå£°æ˜ï¼ˆå³æœ¬å£°æ˜ï¼‰
 *
-* ÎÄ¼şÃû³Æ          NEUQ_MPU6050
-* ×éÖ¯Ãû³Æ          ¶«±±´óÑ§ÇØ»Êµº·ÖĞ£ ÖÇÄÜ³µÊµÑéÊÒ
-* °æ±¾ĞÅÏ¢          ²é¿´ libraries/doc ÎÄ¼ş¼ĞÄÚ version ÎÄ¼ş °æ±¾ËµÃ÷
-* ¿ª·¢»·¾³          MDK-ARM v5.38
-* ÊÊÓÃÆ½Ì¨          STM32F407VE
+* æ–‡ä»¶åç§°          NEUQ_MPU6050
+* ç»„ç»‡åç§°          ä¸œåŒ—å¤§å­¦ç§¦çš‡å²›åˆ†æ ¡ æ™ºèƒ½è½¦å®éªŒå®¤
+* ç‰ˆæœ¬ä¿¡æ¯          æŸ¥çœ‹ libraries/doc æ–‡ä»¶å¤¹å†… version æ–‡ä»¶ ç‰ˆæœ¬è¯´æ˜
+* å¼€å‘ç¯å¢ƒ          MDK-ARM v5.38
+* é€‚ç”¨å¹³å°          STM32F407VE
 *
-* ĞŞ¸Ä¼ÇÂ¼
-* ÈÕÆÚ              ×÷Õß                ±¸×¢
+* ä¿®æ”¹è®°å½•
+* æ—¥æœŸ              ä½œè€…                å¤‡æ³¨
 * 2025-09-05        zxz        first version
-* 2025-09-22        ÕÅÈğ       ĞŞ¸´Á¬Ğøresetµ¼ÖÂ´Ó»úiicËÀËøµÄÎÊÌâ
+* 2025-09-22        å¼ ç‘       ä¿®å¤è¿ç»­resetå¯¼è‡´ä»æœºiicæ­»é”çš„é—®é¢˜
 ********************************************************************************************************************/
 #include "NEUQ_lib_include.h"
 
 MPU6050_Data MPU6050_Data_get={0};
-int16_t mpu6050_gyro_x = 0, mpu6050_gyro_y = 0, mpu6050_gyro_z = 0;            // ÈıÖáÍÓÂİÒÇÊı¾İ   gyro (ÍÓÂİÒÇ)
-int16_t mpu6050_acc_x = 0, mpu6050_acc_y = 0, mpu6050_acc_z = 0;               // ÈıÖá¼ÓËÙ¶È¼ÆÊı¾İ acc  (accelerometer ¼ÓËÙ¶È¼Æ)
-int16_t temp = 0;                                                      // ÎÂ¶ÈÊı¾İ temp (temperature ÎÂ¶È)
+int16_t mpu6050_gyro_x = 0, mpu6050_gyro_y = 0, mpu6050_gyro_z = 0;            // ä¸‰è½´é™€èºä»ªæ•°æ®   gyro (é™€èºä»ª)
+int16_t mpu6050_acc_x = 0, mpu6050_acc_y = 0, mpu6050_acc_z = 0;               // ä¸‰è½´åŠ é€Ÿåº¦è®¡æ•°æ® acc  (accelerometer åŠ é€Ÿåº¦è®¡)
+int16_t temp = 0;                                                      // æ¸©åº¦æ•°æ® temp (temperature æ¸©åº¦)
 //==============================================================================================
-// º¯ÊıÃû³Æ : NEUQ_MPU6050_init
-// º¯Êı¹¦ÄÜ : ³õÊ¼»¯MPU6050´«¸ĞÆ÷
-// ÊäÈë²ÎÊı : ÎŞ
-// Êä³ö²ÎÊı : ÎŞ
-// ·µ »Ø Öµ : 1 ³É¹¦ 0 Ê§°Ü
-// Ê¹ÓÃÊ¾Àı : NEUQ_MPU6050_init() // ³õÊ¼»¯MPU6050´«¸ĞÆ÷
+// å‡½æ•°åç§° : NEUQ_MPU6050_init
+// å‡½æ•°åŠŸèƒ½ : åˆå§‹åŒ–MPU6050ä¼ æ„Ÿå™¨
+// è¾“å…¥å‚æ•° : æ— 
+// è¾“å‡ºå‚æ•° : æ— 
+// è¿” å› å€¼ : 1 æˆåŠŸ 0 å¤±è´¥
+// ä½¿ç”¨ç¤ºä¾‹ : NEUQ_MPU6050_init() // åˆå§‹åŒ–MPU6050ä¼ æ„Ÿå™¨
 //==============================================================================================
 static inline void MPU6050_IIC_Reset(void);
 uint8_t NEUQ_MPU6050_init(void){
 #if MPU6050_IIC_METHOD==MPU6050_IIC_METHOD_HARD_IIC
-    MPU6050_IIC_Reset(); // Ç¿ĞĞÀ­¸ßsclÒªÇó´Ó»úÊÍ·Å×ÜÏß£¬±ÜÃâ×ÜÏßËÀËø
+    MPU6050_IIC_Reset(); // å¼ºè¡Œæ‹‰é«˜sclè¦æ±‚ä»æœºé‡Šæ”¾æ€»çº¿ï¼Œé¿å…æ€»çº¿æ­»é”
     NEUQ_Delay_ms(100);
-    NEUQ_Hard_IIC_init(MPU6050_HARD_IIC_USE,MPU6050_HARD_IIC_SPEED_USE);//Æô¶¯iicÍ¨ĞÅ
+    NEUQ_Hard_IIC_init(MPU6050_HARD_IIC_USE,MPU6050_HARD_IIC_SPEED_USE);//å¯åŠ¨iicé€šä¿¡
     NEUQ_Delay_ms(100);
     NEUQ_Hard_IIC_write_8bit_reg(MPU6050_HARD_IIC_USE, MPU6050_ADDR, 0x6B, 0x80);
     NEUQ_Delay_ms(10);
-    NEUQ_Hard_IIC_write_8bit_reg(MPU6050_HARD_IIC_USE,MPU6050_ADDR,MPU6050_PWR_MGMT_1,0x00);//»½ĞÑ´«¸ĞÆ÷
+    NEUQ_Hard_IIC_write_8bit_reg(MPU6050_HARD_IIC_USE,MPU6050_ADDR,MPU6050_PWR_MGMT_1,0x00);//å”¤é†’ä¼ æ„Ÿå™¨
     NEUQ_Delay_ms(10);
 
     uint8_t data=0;
-    if(NEUQ_Hard_IIC_read_8bit_reg(MPU6050_HARD_IIC_USE,MPU6050_ADDR,MPU6050_WHO_AM_I,&data,1)!=1){//¼ì²é´«¸ĞÆ÷ÊÇ·ñÔÚÏß
+    if(NEUQ_Hard_IIC_read_8bit_reg(MPU6050_HARD_IIC_USE,MPU6050_ADDR,MPU6050_WHO_AM_I,&data,1)!=1){//æ£€æŸ¥ä¼ æ„Ÿå™¨æ˜¯å¦åœ¨çº¿
         return 0;
     }
 
@@ -73,12 +73,12 @@ uint8_t NEUQ_MPU6050_init(void){
 }
 
 //==============================================================================================
-// º¯ÊıÃû³Æ : NEUQ_MPU6050_read_data
-// º¯Êı¹¦ÄÜ : ¶ÁÈ¡MPU6050´«¸ĞÆ÷Êı¾İ
-// ÊäÈë²ÎÊı : ÎŞ
-// Êä³ö²ÎÊı : ÎŞ
-// ·µ »Ø Öµ : ÎŞ
-// Ê¹ÓÃÊ¾Àı : NEUQ_MPU6050_read_data() // ¶ÁÈ¡MPU6050´«¸ĞÆ÷Êı¾İ£¬Êı¾İ±£´æÔÚ MPU6050_Data_get ½á¹¹ÌåÖĞ
+// å‡½æ•°åç§° : NEUQ_MPU6050_read_data
+// å‡½æ•°åŠŸèƒ½ : è¯»å–MPU6050ä¼ æ„Ÿå™¨æ•°æ®
+// è¾“å…¥å‚æ•° : æ— 
+// è¾“å‡ºå‚æ•° : æ— 
+// è¿” å› å€¼ : æ— 
+// ä½¿ç”¨ç¤ºä¾‹ : NEUQ_MPU6050_read_data() // è¯»å–MPU6050ä¼ æ„Ÿå™¨æ•°æ®ï¼Œæ•°æ®ä¿å­˜åœ¨ MPU6050_Data_get ç»“æ„ä½“ä¸­
 //==============================================================================================
 void NEUQ_MPU6050_read_data(void){
     uint8_t raw[14];
@@ -98,12 +98,12 @@ void NEUQ_MPU6050_read_data(void){
 }
 
 //==============================================================================================
-// º¯ÊıÃû³Æ : MPU6050_acc_transition
-// º¯Êı¹¦ÄÜ : ¼ÓËÙ¶È¼ÆÊı¾İ×ª»»Îª g
-// ÊäÈë²ÎÊı : acc_value : Ô­Ê¼¼ÓËÙ¶È¼ÆÊı¾İ
-// Êä³ö²ÎÊı : ÎŞ
-// ·µ »Ø Öµ : ×ª»»ºóµÄ¼ÓËÙ¶ÈÖµ£¬µ¥Î» g
-// Ê¹ÓÃÊ¾Àı : float ax = MPU6050_acc_transition(mpu6050_acc_x); // ½«Ô­Ê¼¼ÓËÙ¶È¼ÆÊı¾İ×ª»»Îª g
+// å‡½æ•°åç§° : MPU6050_acc_transition
+// å‡½æ•°åŠŸèƒ½ : åŠ é€Ÿåº¦è®¡æ•°æ®è½¬æ¢ä¸º g
+// è¾“å…¥å‚æ•° : acc_value : åŸå§‹åŠ é€Ÿåº¦è®¡æ•°æ®
+// è¾“å‡ºå‚æ•° : æ— 
+// è¿” å› å€¼ : è½¬æ¢åçš„åŠ é€Ÿåº¦å€¼ï¼Œå•ä½ g
+// ä½¿ç”¨ç¤ºä¾‹ : float ax = MPU6050_acc_transition(mpu6050_acc_x); // å°†åŸå§‹åŠ é€Ÿåº¦è®¡æ•°æ®è½¬æ¢ä¸º g
 //==============================================================================================
 float MPU6050_acc_transition (int16_t acc_value)
 {
@@ -113,18 +113,18 @@ float MPU6050_acc_transition (int16_t acc_value)
         case MPU6050_ACCEL_FS_4G:  accel_sensitivity = 8192.0f; break;
         case MPU6050_ACCEL_FS_8G:  accel_sensitivity = 4096.0f; break;
         case MPU6050_ACCEL_FS_16G: accel_sensitivity = 2048.0f; break;
-        default: accel_sensitivity = 4096.0f; break; // Ä¬ÈÏ ¡À8g
+        default: accel_sensitivity = 4096.0f; break; // é»˜è®¤ Â±8g
     }
     return acc_value / accel_sensitivity;
 }
 
 //==============================================================================================
-// º¯ÊıÃû³Æ : MPU6050_gyro_transition
-// º¯Êı¹¦ÄÜ : ÍÓÂİÒÇÊı¾İ×ª»»Îª ¡ã/s
-// ÊäÈë²ÎÊı : gyro_value : Ô­Ê¼ÍÓÂİÒÇÊı¾İ
-// Êä³ö²ÎÊı : ÎŞ
-// ·µ »Ø Öµ : ×ª»»ºóµÄÍÓÂİÒÇÖµ£¬µ¥Î» ¡ã/s
-// Ê¹ÓÃÊ¾Àı : float gx = MPU6050_gyro_transition(mpu6050_gyro_x); // ½«Ô­Ê¼ÍÓÂİÒÇÊı¾İ×ª»»Îª ¡ã/s
+// å‡½æ•°åç§° : MPU6050_gyro_transition
+// å‡½æ•°åŠŸèƒ½ : é™€èºä»ªæ•°æ®è½¬æ¢ä¸º Â°/s
+// è¾“å…¥å‚æ•° : gyro_value : åŸå§‹é™€èºä»ªæ•°æ®
+// è¾“å‡ºå‚æ•° : æ— 
+// è¿” å› å€¼ : è½¬æ¢åçš„é™€èºä»ªå€¼ï¼Œå•ä½ Â°/s
+// ä½¿ç”¨ç¤ºä¾‹ : float gx = MPU6050_gyro_transition(mpu6050_gyro_x); // å°†åŸå§‹é™€èºä»ªæ•°æ®è½¬æ¢ä¸º Â°/s
 //==============================================================================================
 float MPU6050_gyro_transition (int16_t gyro_value)
 {
@@ -134,7 +134,7 @@ float MPU6050_gyro_transition (int16_t gyro_value)
         case MPU6050_GYRO_FS_500:  gyro_sensitivity = 65.5f; break;
         case MPU6050_GYRO_FS_1000: gyro_sensitivity = 32.8f; break;
         case MPU6050_GYRO_FS_2000: gyro_sensitivity = 16.4f; break;
-        default:   gyro_sensitivity = 65.5f; break; // Ä¬ÈÏ ¡À500¡ã/s
+        default:   gyro_sensitivity = 65.5f; break; // é»˜è®¤ Â±500Â°/s
     }
     // float deg_to_rad = 3.1415926f / 180.0f;
     return gyro_value / gyro_sensitivity;
@@ -148,10 +148,10 @@ static inline void gpio_od_high(GPIO_TypeDef* port, uint16_t pin) {
     GPIO_InitTypeDef g = {0};
     g.Pin = pin;
     g.Mode = GPIO_MODE_OUTPUT_OD;
-    g.Pull = GPIO_PULLUP;   // °åÉÏÓĞÉÏÀ­Ôò NOPULL
+    g.Pull = GPIO_PULLUP;   // æ¿ä¸Šæœ‰ä¸Šæ‹‰åˆ™ NOPULL
     g.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(port, &g);
-    HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET); // ÊÍ·Å=Ğ´¸ß
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET); // é‡Šæ”¾=å†™é«˜
 }
 static inline void gpio_od_low(GPIO_TypeDef* port, uint16_t pin) {
     GPIO_InitTypeDef g = {0};
@@ -160,41 +160,41 @@ static inline void gpio_od_low(GPIO_TypeDef* port, uint16_t pin) {
     g.Pull = GPIO_PULLUP;
     g.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(port, &g);
-    HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET); // À­µÍ
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET); // æ‹‰ä½
 }
 
 static inline uint8_t pin_read(GPIO_TypeDef* port, uint16_t pin) {
     return HAL_GPIO_ReadPin(port, pin) == GPIO_PIN_SET;
 }
-static inline void short_delay(void) { for(volatile int i=0;i<200;i++); } // ~us ¼¶
+static inline void short_delay(void) { for(volatile int i=0;i<200;i++); } // ~us çº§
 
 static inline void MPU6050_IIC_Reset(void) {
-    // 2) ½Ó¹ÜÒı½ÅÎª¿ªÂ©Êä³ö²¢ÏÈ¡°ÊÍ·ÅÎª¸ß¡±
+    // 2) æ¥ç®¡å¼•è„šä¸ºå¼€æ¼è¾“å‡ºå¹¶å…ˆâ€œé‡Šæ”¾ä¸ºé«˜â€
     gpio_od_high(I2C_SCL_GPIO_Port, I2C_SCL_Pin);
     gpio_od_high(I2C_SDA_GPIO_Port, I2C_SDA_Pin);
 
-    // 3) Èô SDA µÍ£¬Ôò¶Ô SCL ´ò×î¶à 9 ¸öÂö³å´ÙÆäÊÍ·Å
+    // 3) è‹¥ SDA ä½ï¼Œåˆ™å¯¹ SCL æ‰“æœ€å¤š 9 ä¸ªè„‰å†²ä¿ƒå…¶é‡Šæ”¾
     if (!pin_read(I2C_SDA_GPIO_Port, I2C_SDA_Pin)) {
         for (int i = 0; i < 9 && !pin_read(I2C_SDA_GPIO_Port, I2C_SDA_Pin); i++) {
-            // SCL ÊÍ·ÅÎª¸ß£¬µÈ´ıËüÕæµÄÎª¸ß£¨¼æÈİ´Ó»ú clock stretch£©
+            // SCL é‡Šæ”¾ä¸ºé«˜ï¼Œç­‰å¾…å®ƒçœŸçš„ä¸ºé«˜ï¼ˆå…¼å®¹ä»æœº clock stretchï¼‰
             gpio_od_high(I2C_SCL_GPIO_Port, I2C_SCL_Pin);
             uint32_t to = 2000;
             while (!pin_read(I2C_SCL_GPIO_Port, I2C_SCL_Pin) && to--) { /* wait */ }
 
-            // ÔÙÀ­µÍĞÎ³ÉÒ»¸öÍêÕûÊ±ÖÓ
+            // å†æ‹‰ä½å½¢æˆä¸€ä¸ªå®Œæ•´æ—¶é’Ÿ
             short_delay();
             gpio_od_low(I2C_SCL_GPIO_Port, I2C_SCL_Pin);
             short_delay();
         }
     }
 
-    // 4) ¹¹Ôì STOP£º±£Ö¤ SCL ¸ßÆÚ¼ä£¬ÈÃ SDA ÓÉµÍ -> ¸ß
-    gpio_od_low(I2C_SDA_GPIO_Port, I2C_SDA_Pin);  // ÏÈÀ­ SDA µÍ
+    // 4) æ„é€  STOPï¼šä¿è¯ SCL é«˜æœŸé—´ï¼Œè®© SDA ç”±ä½ -> é«˜
+    gpio_od_low(I2C_SDA_GPIO_Port, I2C_SDA_Pin);  // å…ˆæ‹‰ SDA ä½
     short_delay();
-    gpio_od_high(I2C_SCL_GPIO_Port, I2C_SCL_Pin); // SCL ÊÍ·ÅÎª¸ß
+    gpio_od_high(I2C_SCL_GPIO_Port, I2C_SCL_Pin); // SCL é‡Šæ”¾ä¸ºé«˜
     uint32_t to = 2000;
     while (!pin_read(I2C_SCL_GPIO_Port, I2C_SCL_Pin) && to--) { /* wait */ }
     short_delay();
-    gpio_od_high(I2C_SDA_GPIO_Port, I2C_SDA_Pin); // SDA ÊÍ·ÅÎª¸ß = STOP
+    gpio_od_high(I2C_SDA_GPIO_Port, I2C_SDA_Pin); // SDA é‡Šæ”¾ä¸ºé«˜ = STOP
     short_delay();
 }

@@ -69,7 +69,7 @@
 #include "Drv_Encoder.h"
 #include "Drv_Key.h"
 #include "Drv_Lcd.h"
-#include "Drv_Gyro.h"
+#include "Drv_Gyro.h" 
 #include "Drv_Clock.h"
 #include "Drv_Uart.h"
 #include "Proto_Bluetooth.h"

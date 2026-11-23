@@ -8,6 +8,13 @@ spec = importlib.util.spec_from_file_location('car_host', Path(__file__).resolve
 host = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(host)
 
+
+def telemetry_frame(left, right, state, frame_type=0xA5):
+    """按固件 A5/A6 打包帧：类型 + 两个 int16 大端 + 状态 + XOR。"""
+    body = bytes([frame_type]) + struct.pack('>hh', left, right) + bytes([state])
+    return body + bytes([body[0] ^ body[1] ^ body[2] ^ body[3] ^ body[4] ^ body[5]])
+
+
 class ProtocolTests(unittest.TestCase):
     def test_crc_golden(self):
         self.assertEqual(host.crc8(b'123456789'), 0xf4)
@@ -39,14 +46,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertLessEqual(max(abs(l), abs(r)), 180)
 
     def test_fragmented_telemetry(self):
-        frame = struct.pack('<16f', *range(16)) + host.TAIL
+        frame = telemetry_frame(3, 0, 0)
         reader = host.TelemetryReader()
-        self.assertEqual(reader.feed(b'garbage' + frame[:12]), [])
-        result = reader.feed(frame[12:] + frame)
+        self.assertEqual(reader.feed(b'garbage' + frame[:3]), [])
+        result = reader.feed(frame[3:] + frame)
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0][3], 3)
         reader.feed(b'x' * 10000)
-        self.assertLessEqual(len(reader.buffer), 67)
+        self.assertLessEqual(len(reader.buffer), 4096)
+
+    def test_slow_frame_updates_position(self):
+        reader = host.TelemetryReader()
+        self.assertEqual(reader.feed(telemetry_frame(123, -456, 0, host.TelemetryReader.SLOW)), [])
+        self.assertEqual(reader.last_slow, (1.23, -4.56))
 
 class Var:
     def __init__(self, value): self.value = value
@@ -81,9 +93,11 @@ class DrivingSafetyTests(unittest.TestCase):
         self.app.reader = host.TelemetryReader()
         self.app.root = SimpleNamespace(after=lambda *a: None, focus_get=lambda: None)
         self.app.tk = SimpleNamespace(TclError=RuntimeError)
+        self.app.target = [0, 0]
+        self.app.local_gains = [[8.0, 0.3, 0.0], [8.0, 0.3, 0.0]]
 
     def telemetry(self, state, fault=0):
-        self.app.port.input += struct.pack('<16f', state, fault, *([0] * 14)) + host.TAIL
+        self.app.port.input += telemetry_frame(0, 0, state)
         self.app.poll()
 
     def test_cannot_arm_without_stopped_telemetry(self):

@@ -204,6 +204,22 @@ static void execute(Car_Core *c)
                                         signed_rpm(c->data + 1));
             break;
 
+        case 7:
+            /* OUTER：enable u8 + 左右相对位移 int16（0.01 rev）。 */
+            c->result = Car_SetOuter(c,
+                                     c->data[0],
+                                     signed_rpm(c->data + 1) / 100.0f,
+                                     signed_rpm(c->data + 3) / 100.0f);
+            break;
+
+        case 8:
+            /* OUTERPID：外环位置环增益，轮号 + 3 个 uint16（×100）。 */
+            c->result = Car_SetOuterPid(c, c->data[0],
+                                        u16(c->data + 1) / 100.0f,
+                                        u16(c->data + 3) / 100.0f,
+                                        u16(c->data + 5) / 100.0f);
+            break;
+
         default:
             c->result = 3;                /* 未知命令 */
             break;
@@ -230,11 +246,11 @@ static void execute(Car_Core *c)
 void Car_FeedByte(Car_Core *c, uint8_t byte)
 {
     /*
-     * 命令 1~6 对应的负载长度：0、0、4、7、0、3。
+     * 命令 1~8 对应的负载长度：0、0、4、7、0、3、5、7。
      * 下标 0 占位，保证可以直接用命令号索引；先核验长度，
      * 才能保证后续写入 c->data[7] 不会越界。
      */
-    static const uint8_t lengths[7] =
+    static const uint8_t lengths[9] =
     {
         255,                                         /* 下标 0：无效命令占位 */
         0,                                           /* 命令 1：ARM，无负载 */
@@ -242,7 +258,9 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
         4,                                           /* 命令 3：WHEELS，左右各 2 字节 */
         7,                                           /* 命令 4：PID，轮号 + 3 个 uint16 */
         0,                                           /* 命令 5：HEARTBEAT，无负载 */
-        3                                            /* 命令 6：OPENLOOP，轮号 + int16 */
+        3,                                           /* 命令 6：OPENLOOP，轮号 + int16 */
+        5,                                           /* 命令 7：OUTER，开关 + 左右相对位移 */
+        7                                            /* 命令 8：OUTERPID，轮号 + 3 个 uint16 */
     };
 
     /*
@@ -280,7 +298,7 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
 
         case 2:
             /* 状态 2：接收命令号，并开始累计 CRC。 */
-            if (byte < 1 || byte > 6)
+            if (byte < 1 || byte > 8)
             {
                 c->result = 3;
                 c->parse_state = (byte == 0xC3) ? 1 : 0;

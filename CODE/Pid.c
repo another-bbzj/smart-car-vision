@@ -398,6 +398,7 @@ void Car_PidInc_reset(Car_PidInc_Struct *p)
     p->started = 0;            /* 重新等待首个测量周期 */
     p->fault = 0;              /* 清除锁存故障 */
     p->saturated = 0;          /* 清除饱和标志 */
+    p->integral_hold = 0;      /* 清除大误差积分冻结 */
 }
 
 /*
@@ -440,14 +441,16 @@ uint8_t Car_PidInc_init(Car_PidInc_Struct *p, float kp, float ki, float kd, floa
     p->beta = 1.0f;                 /* 默认使用完整目标 */
     p->derivative_tau_s = 0.02f;    /* 默认微分滤波 20 ms */
 
-    /* 默认不启用低速调度、积分分离和死区前馈，保持旧行为。 */
+    /* 默认不启用低速调度、近设定点软化、大误差冻结和死区前馈。 */
     p->low_speed_rpm = 0.0f;        /* 0 = 不启用低速增益调度 */
     p->high_speed_rpm = 0.0f;       /* 0 = 不启用低速增益调度 */
     p->kp_scale_low = 1.0f;         /* 低速 Kp 系数，1 = 不缩放 */
     p->ki_scale_low = 1.0f;         /* 低速 Ki 系数，1 = 不缩放 */
-    p->integral_band_rpm = 0.0f;    /* 0 = 不启用积分分离 */
-    p->integral_scale = 1.0f;       /* 误差带内 Ki 系数，1 = 不缩放 */
+    p->integral_band_rpm = 0.0f;    /* 0 = 不启用近设定点软化 */
+    p->integral_scale = 1.0f;       /* 软化带内 Ki 系数，1 = 不缩放 */
     p->integral_speed_rpm = 0.0f;   /* 0 = 不对目标转速设限 */
+    p->integral_cut_in_rpm = 0.0f;  /* 0 = 不启用大误差积分冻结 */
+    p->integral_cut_out_rpm = 0.0f; /* 0 = 不启用大误差积分冻结 */
     p->ff_dead_run = 0.0f;          /* 死区模型运行死区，默认 0 */
     p->ff_dead_start = 0.0f;        /* 死区模型起步断裂值，默认 0 */
     p->ff_gain = 0.0f;              /* 死区模型速度前馈，默认 0 */
@@ -506,15 +509,15 @@ uint8_t Car_PidInc_configure(Car_PidInc_Struct *p, float beta, float tau, float 
 
 /*
  * 函数名称：Car_PidInc_set_low_speed
- * 函数功能：配置低速 Kp/Ki 调度和误差带内的积分分离。
+ * 函数功能：配置低速 Kp/Ki 调度和近设定点软化。
  * 参数说明：p              —— 增量式 PID 对象；
  *           low_speed_rpm  —— 调度起点（rpm），0 且 high=0 表示禁用；
  *           high_speed_rpm —— 调度终点（rpm），必须大于 low；
  *           kp_scale_low   —— 低速 Kp 系数，(0,1]；
  *           ki_scale_low   —— 低速 Ki 系数，(0,1]；
- *           band_rpm       —— 积分分离误差带（rpm），0 表示禁用；
- *           band_scale     —— 误差带内 Ki 系数，[0,1]；
- *           band_speed_rpm —— 仅在目标低于此值时启用积分分离（rpm）。
+ *           band_rpm       —— 近设定点软化带（rpm），0 表示禁用；
+ *           band_scale     —— 软化带内最低 Ki 倍数，[0,1]；
+ *           band_speed_rpm —— 仅在目标低于此值时启用软化（rpm），0=不限。
  * 返回参数：1 成功；0 参数无效，保留原配置。
  * 备注信息：只改调度参数，不清积分/P/FF 历史；基础 Kp/Ki 不变。
  */
@@ -545,6 +548,32 @@ uint8_t Car_PidInc_set_low_speed(Car_PidInc_Struct *p, float low_speed_rpm, floa
     p->integral_band_rpm = band_rpm;
     p->integral_scale = band_scale;
     p->integral_speed_rpm = band_speed_rpm;
+    return 1;
+}
+
+/*
+ * 函数名称：Car_PidInc_set_integral_cut
+ * 函数功能：配置大误差积分冻结的进入/退出阈值（滞回）。
+ * 参数说明：p       —— 增量式 PID 对象；
+ *           in_rpm  —— 进入阈值（rpm），|误差| 大于它时冻结积分；
+ *                      0 表示禁用，否则必须严格大于 out_rpm；
+ *           out_rpm —— 退出阈值（rpm），|误差| 小于它时恢复积分。
+ * 返回参数：1 成功并清除冻结状态；0 参数无效，保留原配置。
+ * 备注信息：只冻结积分，比例/微分/前馈照常响应；默认禁用，
+ *           由 Car_Init / Car_SetPid 用 PID_I_CUT_* 宏开启。
+ */
+uint8_t Car_PidInc_set_integral_cut(Car_PidInc_Struct *p, float in_rpm, float out_rpm)
+{
+    if (!number(in_rpm) || !number(out_rpm) ||
+        in_rpm < 0.0f || out_rpm < 0.0f ||
+        (in_rpm > 0.0f && in_rpm <= out_rpm))
+    {
+        return 0;
+    }
+
+    p->integral_cut_in_rpm = in_rpm;
+    p->integral_cut_out_rpm = out_rpm;
+    p->integral_hold = 0;           /* 新配置从“未冻结”开始 */
     return 1;
 }
 
@@ -622,6 +651,7 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure, fl
     float ff_ratio;                                        /* |target| / 起步补偿衰减尺度 */
     float ff_decay;                                        /* 起步补偿衰减因子，0..1 */
     float ff_dead;                                         /* 本拍有效死区 PWM */
+    float i_soft;                                          /* 近设定点 Ki 软化系数，0..1 */
 
     if (p->fault)                                          /* 已锁存故障，保持输出为 0 */
     {
@@ -662,15 +692,41 @@ float Car_PidInc_update_dt(Car_PidInc_Struct *p, float target, float measure, fl
     }
 
     /*
-     * 积分分离：只在低速区、目标低于上限、误差进入带内时削弱积分。
-     * 不直接清零，保留温漂和负载偏置的慢速修正能力。
+     * 近设定点软化：误差从 0 增大到 band 时，Ki 从 scale 倍平滑升到 1 倍，
+     * 没有硬边界；带外保持完整积分，负载残差仍能修正。
      */
     if (p->integral_band_rpm > 0.0f &&
         (p->integral_speed_rpm <= 0.0f ||
-         speed_abs < p->integral_speed_rpm) &&
-        fabsf(error) < p->integral_band_rpm)
+         speed_abs < p->integral_speed_rpm))
     {
-        ki_eff *= p->integral_scale;
+        i_soft = fabsf(error) / p->integral_band_rpm;
+
+        if (i_soft < 1.0f)
+        {
+            ki_eff *= p->integral_scale + (1.0f - p->integral_scale) * i_soft;
+        }
+    }
+
+    /*
+     * 大误差积分冻结（滞回）：起步、大阶跃或测速异常时冻结积分，避免在
+     * 追上目标前积累过多；误差回到 cut_out 以内自动恢复。只冻结积分，
+     * P/D/FF 照常响应，条件抗饱和仍独立生效。cut_in=0 表示禁用。
+     */
+    if (p->integral_cut_in_rpm > 0.0f)
+    {
+        if (fabsf(error) > p->integral_cut_in_rpm)
+        {
+            p->integral_hold = 1;
+        }
+        else if (fabsf(error) < p->integral_cut_out_rpm)
+        {
+            p->integral_hold = 0;
+        }
+
+        if (p->integral_hold)
+        {
+            ki_eff = 0.0f;
+        }
     }
 
     p->kp_effective = kp_eff;                              /* 调试：本拍实际 Kp */

@@ -4,25 +4,25 @@
  * ============================================================================
  * 文件名称：Proto_Vofa.h
  * ============================================================================
- * 模块功能：向上位机 VOFA+ 发送波形数据（JustFloat 协议）。
+ * 模块功能：蓝牙上行遥测的发送缓冲（打包二进制帧，不再使用 JustFloat）。
  *
- *   帧格式：N 个 float（每个 4 字节，小端）+ 帧尾 00 00 80 7F。
- *   VOFA+ 把第 1 个 float 画成 I0，第 2 个画成 I1……
- *   本工程的通道顺序固定在 Platform_Main.c 的遥测装配处，共 16 通道。
+ *   帧由 Platform_Main.c 组装，本模块只负责“整帧入队 + 主循环逐字节发送”：
+ *     快帧 A5：左/右实测 rpm + 状态，7 字节，100 Hz
+ *     慢帧 A6：左/右位置（0.01 rev）+ 状态，7 字节，20 Hz
+ *   缓冲区放不下时整帧丢弃，绝不发半帧，上位机不会解析错位。
  *
  *   运行视角
- *     控制中断每 20 拍（100 ms）组一帧 -> Vofa_Push()；主循环 Vofa_Poll()
- *     逐字节发送。蓝牙带宽 960 B/s，遥测 680 B/s，留出下行命令的余量。
+ *     控制中断组装帧 -> Vofa_PushFrame()；主循环 Vofa_Poll() 逐字节发送。
+ *     9600 波特率下快慢帧合计约 840 B/s，占 960 B/s 的 87.5%。
  * ============================================================================
  */
 
 #include <stdint.h>
 
-#define VOFA_MAX_CHANNELS       (16U)       // 一帧最多几个通道
-#define VOFA_FIFO_SIZE          (2048U)     // 发送缓冲大小（字节），主循环忙于刷屏、写 Flash 时先存在这里
+#define VOFA_FIFO_SIZE          (2048U)     /* 发送缓冲大小（字节） */
 
-void    Vofa_Init(uint8_t uart_dev);                        // uart_dev 取 UART_0 ~ UART_3，串口需要已经初始化
-uint8_t Vofa_Push(const float *data, uint8_t channels);     // 中断中调用：放入一帧，1 成功 0 缓冲满被丢弃
-void    Vofa_Poll(void);                                    // 主循环中调用：把缓冲里的数据发出去
+void    Vofa_Init(uint8_t uart_dev);                                 /* uart_dev 取 UART_0 ~ UART_3 */
+uint8_t Vofa_PushFrame(const uint8_t *data, uint32_t length);        /* 中断中调用：整帧入队，1 成功 0 丢弃 */
+void    Vofa_Poll(void);                                             /* 主循环中调用：把缓冲里的数据发出去 */
 
 #endif

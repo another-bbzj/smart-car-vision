@@ -416,16 +416,95 @@ static void poll_params(void)
 }
 
 /*
+ * 函数名称：telemetry_i16
+ * 函数功能：把浮点量按比例缩放、四舍五入并饱和到 int16 范围。
+ * 参数说明：value —— 待打包的浮点值；
+ *           scale —— 缩放系数（rpm 用 1，位置 0.01 rev 用 100）。
+ * 返回参数：int16 范围内的整数；NaN/过小返回 -32768，过大返回 32767。
+ * 备注信息：不依赖 lroundf，避免为了一个遥测帧引入额外的库函数。
+ */
+static int16_t telemetry_i16(float value, float scale)
+{
+    float scaled = value * scale;
+
+    if (!(scaled > -32768.0f))          /* NaN 或小于下限 */
+    {
+        return -32768;
+    }
+    if (scaled > 32767.0f)
+    {
+        return 32767;
+    }
+
+    return (int16_t)((scaled >= 0.0f) ? (scaled + 0.5f) : (scaled - 0.5f));
+}
+
+/*
+ * 函数名称：telemetry_put_i16
+ * 函数功能：把有符号 16 位整数按大端顺序写入字节缓冲。
+ * 参数说明：p     —— 目标字节位置；
+ *           value —— 待写入的整数。
+ * 返回参数：无。
+ */
+static void telemetry_put_i16(uint8_t *p, int16_t value)
+{
+    p[0] = (uint8_t)((uint16_t)value >> 8);
+    p[1] = (uint8_t)value;
+}
+
+/*
+ * 函数名称：telemetry_fast_frame
+ * 函数功能：组装并发送快帧（左右实测 rpm + 状态），100 Hz。
+ * 参数说明：c —— 整车控制对象。
+ * 返回参数：无。
+ * 备注信息：帧格式 A5 | 左 rpm int16 | 右 rpm int16 | 状态 u8 | XOR。
+ */
+static void telemetry_fast_frame(const Car_Core *c)
+{
+    uint8_t frame[7];                   /* 7 字节整帧 */
+
+    frame[0] = 0xA5U;
+    telemetry_put_i16(&frame[1], telemetry_i16(c->speed[0], 1.0f));
+    telemetry_put_i16(&frame[3], telemetry_i16(c->speed[1], 1.0f));
+    frame[5] = c->state;
+    frame[6] = (uint8_t)(frame[0] ^ frame[1] ^ frame[2] ^
+                         frame[3] ^ frame[4] ^ frame[5]);
+    (void)Vofa_PushFrame(frame, sizeof(frame));
+}
+
+/*
+ * 函数名称：telemetry_slow_frame
+ * 函数功能：组装并发送慢帧（左右位置 + 状态），20 Hz。
+ * 参数说明：c —— 整车控制对象。
+ * 返回参数：无。
+ * 备注信息：帧格式 A6 | 左位置 int16(0.01 rev) | 右位置 int16 | 状态 u8 | XOR。
+ */
+static void telemetry_slow_frame(const Car_Core *c)
+{
+    uint8_t frame[7];                   /* 7 字节整帧 */
+
+    frame[0] = 0xA6U;
+    telemetry_put_i16(&frame[1], telemetry_i16(c->position[0], 100.0f));
+    telemetry_put_i16(&frame[3], telemetry_i16(c->position[1], 100.0f));
+    frame[5] = c->state;
+    frame[6] = (uint8_t)(frame[0] ^ frame[1] ^ frame[2] ^
+                         frame[3] ^ frame[4] ^ frame[5]);
+    (void)Vofa_PushFrame(frame, sizeof(frame));
+}
+
+/*
  * 函数名称：Car_PIT_Handler
  * 函数功能：5 ms 控制中断：采样、解析、控制、输出、视觉、遥测。
  * 参数说明：无。
  * 返回参数：无。
  * 备注信息：执行顺序固定；电机输出在视觉解析之前完成，避免解析耗时
- *           影响 PWM 相位。
+ *           影响 PWM 相位。遥测为打包二进制帧：A5 快帧 100 Hz、
+ *           A6 慢帧 20 Hz，合计约 840 B/s。
  */
 void Car_PIT_Handler(void)
 {
-    static unsigned telemetry;      /* 遥测分频计数 */
+    static unsigned telemetry_fast; /* 快帧分频计数 */
+    static unsigned telemetry_slow; /* 慢帧分频计数 */
     unsigned n;                     /* 本拍已处理的字节数 */
     uint8_t byte;                   /* 从 FIFO 读出的临时字节 */
     uint32_t dt_us;                 /* 实际控制周期，微秒 */
@@ -503,37 +582,17 @@ void Car_PIT_Handler(void)
 
     finish_tick(HAL_GetTick());
 
-    /* 每 BOARD_TELEMETRY_TICKS 拍发一次 16 通道遥测。 */
-    if (++telemetry >= BOARD_TELEMETRY_TICKS)
+    /* 打包二进制遥测：快帧 100 Hz、慢帧 20 Hz。 */
+    if (++telemetry_fast >= BOARD_TELEMETRY_FAST_TICKS)
     {
-        float channels[16];
+        telemetry_fast = 0;
+        telemetry_fast_frame(&car);
+    }
 
-        telemetry = 0;
-
-        /*
-         * 遥测通道顺序（不可改，VOFA+ 与上位机按此解析）：
-         *   0 状态，1 故障码，2/3 左轮参考/实测，4/5 右轮参考/实测，
-         *   6/7 左右轮输出百分比，8 命令结果，9 帧数，
-         *   10~12 左轮内环 Kp/Ki/Kd，13~15 右轮内环 Kp/Ki/Kd。
-         */
-        channels[0] = (float)car.state;
-        channels[1] = (float)car.fault;
-        channels[2] = car.reference[0];
-        channels[3] = car.speed[0];
-        channels[4] = car.reference[1];
-        channels[5] = car.speed[1];
-        channels[6] = car.output[0] / 100.0f;
-        channels[7] = car.output[1] / 100.0f;
-        channels[8] = (float)car.result;
-        channels[9] = (float)car.frames;
-        channels[10] = car.pid_speed[0].kp;
-        channels[11] = car.pid_speed[0].ki;
-        channels[12] = car.pid_speed[0].kd;
-        channels[13] = car.pid_speed[1].kp;
-        channels[14] = car.pid_speed[1].ki;
-        channels[15] = car.pid_speed[1].kd;
-
-        Vofa_Push(channels, 16);
+    if (++telemetry_slow >= BOARD_TELEMETRY_SLOW_TICKS)
+    {
+        telemetry_slow = 0;
+        telemetry_slow_frame(&car);
     }
 }
 

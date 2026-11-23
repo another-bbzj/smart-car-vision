@@ -12,8 +12,11 @@ function harness({savedTheme = null, storageBlocked = false} = {}) {
   let time = 100, timerId = 0;
   function element() {
     return {value: '', checked: false, disabled: false, textContent: '', children: [], attributes: {}, listeners: {},
+      style: {}, dataset: {}, scrollTop: 0, scrollHeight: 0, width: 0, height: 0,
+      get firstChild() {return this.children[0] || null;},
       setAttribute(name, value) {this.attributes[name] = value;},
       classList: {add() {}, remove() {}, toggle() {}}, addEventListener(name, handler) {this.listeners[name] = handler;}, focus() {},
+      closest() {return element();}, querySelector() {return element();}, querySelectorAll() {return [];},
       appendChild(node) {this.children.push(node);}, removeChild(node) {this.children.shift();},
       replaceChildren() {this.children.length = 0;}};
   }
@@ -33,7 +36,7 @@ function harness({savedTheme = null, storageBlocked = false} = {}) {
     Uint8Array, DataView, console});
   vm.runInContext(source, context);
   const run = code => vm.runInContext(code, context);
-  run(`app.connected = true; app.lastSample = [0,0,...Array(14).fill(0)];
+  run(`app.connected = true; app.lastSample = [0,0,...Array(16).fill(0)];
     app.lastRx = performance.now(); safeCheck.checked = true; baudSel.value = '9600';
     app.port = {close: async () => {}, getInfo: () => ({})};
     globalThis.sent = []; app.writer = {write: async bytes => sent.push([...bytes]), releaseLock() {}, abort: async () => {}};`);
@@ -44,6 +47,10 @@ function harness({savedTheme = null, storageBlocked = false} = {}) {
   }};
 }
 async function flush() {for (let i = 0; i < 30; i++) await Promise.resolve();}
+function telemetryFrame(left, right, state, type = 0xA5) {
+  const body = [type, (left >> 8) & 255, left & 255, (right >> 8) & 255, right & 255, state];
+  return body.concat(body.reduce((a, b) => a ^ b, 0));
+}
 
 test('wire commands match firmware golden vectors', () => {
   const h = harness();
@@ -57,7 +64,7 @@ test('wire commands match firmware golden vectors', () => {
 test('left Kd telemetry is never interpreted as a direction scan result', () => {
   const h = harness();
   for (const kd of [99, 200]) {
-    h.run(`onSample([0,0,0,0,0,0,0,0,0,1,2,0.12,${kd},2,0.12,0],0)`);
+    h.run(`onSample([0,0,0,0,0,0,0,0,0,1,2,0.12,${kd},2,0.12,0,0,0],0,true)`);
     assert.ok(h.nodes.get('actualPid').textContent.includes(kd.toFixed(2)));
     assert.equal(h.run("logEl.children.some(node => /方向引脚/.test(node.textContent))"), false);
   }
@@ -69,14 +76,14 @@ test('STOP during outstanding ARM cannot restore pending or armed state', async 
   h.run('const finishArm = finishWrite; stop(); finishArm();');
   await flush();
   assert.equal(h.run('app.pendingArm'), false);
-  h.run('onSample([1,0,...Array(14).fill(0)],1)');
+  h.run('onSample([1,0,...Array(16).fill(0)],1,true)');
   assert.equal(h.run('app.armed'), false);
 });
 
 test('RUN arriving before ARM write resolves is not lost', async () => {
   const h = harness();
   h.run('app.writer.write = () => new Promise(resolve => globalThis.finishWrite = resolve); arm();');
-  h.run('onSample([1,0,...Array(14).fill(0)],1); finishWrite();');
+  h.run('onSample([1,0,...Array(16).fill(0)],1,true); finishWrite();');
   await flush();
   assert.equal(h.run('app.armed'), true);
   assert.equal(h.run('app.pendingArm'), false);
@@ -122,30 +129,42 @@ test('PID write failure never reports success', async () => {
   assert.equal(h.nodes.get('log').children.some(n => /已写入/.test(n.textContent)), false);
 });
 
-test('fractional state and invalid fault are not accepted as fresh telemetry', () => {
+test('invalid state and checksum are not accepted as fresh telemetry', () => {
   const h = harness();
-  h.run(`app.lastSample = null; const raw = new Uint8Array(64); const dv = new DataView(raw.buffer);
-    dv.setFloat32(0,0.4,true); parseSample(raw);`);
+  const good = telemetryFrame(10, 20, 0);
+  h.run(`app.lastSample = null; feed(new Uint8Array(${JSON.stringify(good)}));`);
+  assert.notEqual(h.run('app.lastSample'), null);
+  assert.equal(h.run('app.lastSample[3]'), 10);
+  assert.equal(h.run('app.lastSample[5]'), 20);
+
+  h.run('app.lastSample = null;');
+  const badState = telemetryFrame(10, 20, 3);
+  h.run(`feed(new Uint8Array(${JSON.stringify(badState)}));`);
   assert.equal(h.run('app.lastSample'), null);
-  h.run('dv.setFloat32(0,0,true); dv.setFloat32(4,99,true); parseSample(raw);');
+
+  h.run('app.lastSample = null;');
+  const badCrc = telemetryFrame(10, 20, 0);
+  badCrc[6] ^= 1;
+  h.run(`feed(new Uint8Array(${JSON.stringify(badCrc)}));`);
   assert.equal(h.run('app.lastSample'), null);
 });
 
 test('fragmented and concatenated telemetry retains every complete sample', () => {
   const h = harness();
-  h.run(`const raw = new Uint8Array(68); raw.set([0,0,128,127],64);
-    feed(new Uint8Array([1,2,3])); feed(raw.slice(0,35)); feed(raw.slice(35)); feed(raw);`);
+  const first = telemetryFrame(3, 0, 0), second = telemetryFrame(5, 6, 0);
+  h.run(`feed(new Uint8Array([1,2,3]));
+    feed(new Uint8Array(${JSON.stringify(first.slice(0, 3))}));
+    feed(new Uint8Array(${JSON.stringify(first.slice(3))}));
+    feed(new Uint8Array(${JSON.stringify(second)}));`);
   assert.equal(h.run('app.rows.length'), 2);
 });
 
-test('out-of-range PWM is rejected while high measured speed remains visible', () => {
+test('int16 measured speed remains visible across the full range', () => {
   const h = harness();
-  h.run(`app.lastSample = null; const raw = new Uint8Array(64); const dv = new DataView(raw.buffer);
-    dv.setFloat32(12,-974,true); dv.setFloat32(24,91,true); parseSample(raw);`);
-  assert.equal(h.run('app.lastSample'), null);
-  h.run('dv.setFloat32(24,-90,true); parseSample(raw);');
-  assert.equal(h.run('app.lastSample[3]'), -974);
-  assert.equal(h.run('app.lastSample[6]'), -90);
+  const frame = telemetryFrame(0, -974, 0);
+  h.run(`app.lastSample = null; feed(new Uint8Array(${JSON.stringify(frame)}));`);
+  assert.equal(h.run('app.lastSample[5]'), -974);
+  assert.equal(h.nodes.get('rRpm').textContent, '-974.0');
 });
 
 test('physical WASD works when input method changes event.key', () => {
@@ -169,35 +188,35 @@ function chartHarness() {
 
 test('hiding a speed channel removes its line and its influence on axis scaling', () => {
   const h = chartHarness();
-  h.run("setCurveVisible('lRef',false); drawSpeedChart();");
-  assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 3);
+  h.run("setCurveVisible('rRpm',false); drawSpeedChart();");
+  assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 1);
   assert.equal(h.run("labels.includes('60')"), true);
   assert.equal(h.run("labels.includes('10000')"), false);
 });
 
-test('presets and individual PWM visibility produce only selected curves', () => {
+test('PWM curves stay disabled because packed telemetry has no PWM channel', () => {
   const h = chartHarness();
-  h.run("selectCurves('pwm'); setCurveVisible('rPwm',false); drawPwmChart();");
-  assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 1);
-  h.run('strokes.length = 0; drawSpeedChart();');
+  assert.equal(h.run('HAS_PWM'), false);
+  h.run("selectCurves('pwm'); drawPwmChart();");
   assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 0);
-  assert.equal(h.run("labels.some(text => text.includes('未选择'))"), true);
+  h.run("selectCurves('all'); strokes.length=0; drawSpeedChart();");
+  assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 2);
 });
 
 test('hiding all curves keeps telemetry and CSV rows, reselecting restores lines', () => {
   const h = chartHarness();
-  h.run("selectCurves('none'); onSample([0,0,10,9,20,18,2,3,0,1,2,0.12,0,2,0.12,0],0); drawSpeedChart(); drawPwmChart();");
+  h.run("selectCurves('none'); onSample([0,0,10,9,20,18,2,3,0,1,2,0.12,0,2,0.12,0,0,0],0,true); drawSpeedChart(); drawPwmChart();");
   assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 0);
   assert.equal(h.run('app.rows.length'), 1);
-  assert.equal(h.run('app.rows[0].length'), 17);
+  assert.equal(h.run('app.rows[0].length'), 19);
   h.run("selectCurves('all'); strokes.length=0; drawSpeedChart(); drawPwmChart();");
-  assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 6);
+  assert.equal(h.run('strokes.filter(s => s.width > 1).length'), 2);
 });
 
 test('theme toggle remembers preference and leaves serial and curve selection untouched', () => {
   const h = harness();
   assert.equal(h.run('document.documentElement.dataset.theme'), 'light');
-  h.run("selectCurves('pwm'); app.armed=true;");
+  h.run("selectCurves('speed'); app.armed=true;");
   h.nodes.get('btnTheme').listeners.click();
   assert.equal(h.run('document.documentElement.dataset.theme'), 'dark');
   assert.equal(h.storage.get('car-console-theme'), 'dark');
