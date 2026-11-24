@@ -65,6 +65,7 @@ enum
  *                 仅 RUN 接受，绝对值不超过 CAR_OPENLOOP_PWM_LIMIT，
  *                 必须每 CAR_OPENLOOP_TIMEOUT_MS 内刷新；STOP、故障、
  *                 轮速命令或超时都会撤去开环输出。
+ *     7 LINK_PROBE：上位机收到遥测后发送，无负载，仅供 LCD 判断连接。
  *
  *   result：0 成功，1 状态不允许，2 参数无效，3 帧或命令无效。
  */
@@ -109,6 +110,7 @@ typedef struct
 
     /* ---------- 计时与保护，单位均为微秒 ---------- */
     uint32_t link_us;        /* 运行通信看门狗计时 */
+    uint32_t bt_probe_us;    /* 上位机连接探测剩余时间，与运行看门狗独立 */
     uint32_t stall_us[2];    /* 左右轮堵转计时 */
     uint32_t direction_us[2];/* 左右轮方向异常计时 */
     uint32_t overspeed_us[2]; /* 左右轮超速计时 */

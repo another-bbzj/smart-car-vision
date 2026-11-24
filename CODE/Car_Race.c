@@ -7,10 +7,24 @@ static float limit(float x, float bound) {
     return fmaxf(-bound, fminf(bound, x));
 }
 
+float Race_ClampRpm(float target_rpm) {
+    float hi = fminf((float)RACE_MAX_RPM, CAR_RPM_LIMIT);
+    if (!isfinite(target_rpm)) return (float)RACE_DEFAULT_RPM;
+    if (target_rpm < (float)RACE_MIN_RPM) return (float)RACE_MIN_RPM;
+    if (target_rpm > hi) return hi;
+    return target_rpm;
+}
+
 void Race_Start(CarRace *r) {
     memset(r, 0, sizeof(*r));
     r->lap = 1;
+    r->target_rpm = RACE_MPS_TO_RPM(0.55f);
     r->last_gap = r->last_action = -100.0f;
+}
+
+void Race_StartWithRpm(CarRace *r, float target_rpm) {
+    Race_Start(r);
+    r->target_rpm = Race_ClampRpm(target_rpm);
 }
 
 static RaceDrive drive(float v, float omega) {
@@ -50,9 +64,11 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     RaceDrive stop = {{0,0}};
     float ds = 0.5f * (dl + dr);
     float dyaw = (dr - dl) / RACE_TRACK_M;
-    float s, curve, speed, heading, target, error, along;
+    float s, curve, speed, heading, target, error, along, v_target;
     int road, new_frame, in_window;
     if (r->phase == RACE_FINISHED || r->phase == RACE_FAULT) return stop;
+    v_target = (isfinite(r->target_rpm) && r->target_rpm > 0.0f)
+             ? RACE_RPM_TO_MPS(Race_ClampRpm(r->target_rpm)) : 0.55f;
     /* A bad control period still faults: it means the 5 ms loop itself failed. */
     if (!(dt >= 0.001f && dt <= 0.0151f)) {
         r->phase = RACE_FAULT;
@@ -128,7 +144,9 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     }
     heading = r->yaw - r->entry_yaw;
     if (r->phase == RACE_GAP) {
-        if (s > 1.95f || now - r->entered_ms > 12500U) {
+        float v_gap = fminf(0.22f, v_target);
+        uint32_t gap_timeout_ms = (uint32_t)fmaxf(12500.0f, 2200.0f / fmaxf(v_gap, 0.05f));
+        if (s > 1.95f || now - r->entered_ms > gap_timeout_ms) {
             r->phase = RACE_FAULT;
             return stop;
         }
@@ -136,18 +154,20 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
             if (s >= 1.30f && road) ++r->clear_frames;
             else r->clear_frames = 0;
         }
-        if (r->clear_frames < 3) return drive(0.22f, limit(-3.0f * heading, 1.2f));
+        if (r->clear_frames < 3) return drive(v_gap, limit(-3.0f * heading, 1.2f));
         r->phase = RACE_TRACK;
         r->straight_m = 0;
         r->last_road_ms = now;
     }
     if (r->phase == RACE_BYPASS) {
+        float v_bypass = fminf(0.18f, v_target);
+        uint32_t bypass_timeout_ms = (uint32_t)fmaxf(12000.0f, 1500.0f / fmaxf(v_bypass, 0.05f));
         /* Follow an offset in the entry frame. Integrate measured forward
          * and side displacement; hold clearance across the obstacle itself. */
         r->offset += ds * sinf(heading);
         r->goal_m -= ds * cosf(heading);
         along = r->obstacle_m + 0.42f - r->goal_m;
-        if (now - r->entered_ms > 12000U || fabsf(heading) > 1.55f || r->goal_m < -0.25f) {
+        if (now - r->entered_ms > bypass_timeout_ms || fabsf(heading) > 1.55f || r->goal_m < -0.25f) {
             r->phase = RACE_FAULT;
             return stop;
         }
@@ -158,7 +178,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
             r->last_road_ms = now;
         } else {
             error = atanf(5.5f * (target - r->offset));
-            return drive(0.18f, limit(4.5f * (error - heading), 2.5f));
+            return drive(v_bypass, limit(4.5f * (error - heading), 2.5f));
         }
     }
     /* Line lost while following the track: keep the last accepted curvature
@@ -174,7 +194,13 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     curve = r->last_curve;
     r->straight_m = fabsf(curve) < 1.75f ? r->straight_m + fmaxf(0,ds) : 0;
     /* Bound lateral acceleration v²|k|, reduce speed on uncertain geometry. */
-    speed = fminf(r->lap == 1 ? 0.55f : 0.32f, sqrtf(0.55f / (fabsf(curve) + 0.01f)));
+    {
+        float lap_v = (r->lap == 1)
+                    ? v_target
+                    : fminf(v_target, fmaxf(0.32f, v_target * (0.32f / 0.55f)));
+        float a_lat = fmaxf(0.55f, 0.30f * v_target * v_target);
+        speed = fminf(lap_v, sqrtf(a_lat / (fabsf(curve) + 0.01f)));
+    }
     if (!road) speed = fminf(speed, RACE_VISION_HOLD_SPEED_MPS);
     /* o is NULL when no fresh observation exists; the hold speed above already
      * bounds the command, so element-specific limits apply only to live frames. */

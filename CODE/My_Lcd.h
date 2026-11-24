@@ -21,7 +21,8 @@
 #include <stdint.h>
 
 #define UI_ROWS             (10)        // 行数
-#define UI_COLS             (32)        // 每行字符数（320 像素 / 字宽 10）
+#define UI_COLS             (32)        // 每行显示列数（320 像素 / 半角宽 10；1 个汉字占 2 列）
+#define UI_LINE_BYTES       (96)        // 单行 UTF-8 格式化缓冲区字节数（含结尾 '\0'）
 #define UI_ROW_PITCH        (24)        // 行距，单位像素（字高 20 + 行间隔 4）
 
 typedef enum {                          // 行的显示样式（字色 / 底色）

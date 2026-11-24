@@ -9,15 +9,15 @@
 /* 临时诊断：1 = 不做任何外设初始化，只用忙等闪核心板 LED2(PA8)，
  * 用于确证独立上电时 MCU 是否在执行本固件。测完改回 0。 */
 #define CAR_LED_TEST            0
-/* 香橙派视觉串口：USART3，PB10 TX / PB11 RX。
+/* 香橙派视觉串口：UART4，PC10 TX / PC11 RX。
  * 与蓝牙分属不同串口，可同时启用。 */
-#define CAR_VISION_UART_INDEX   2
+#define CAR_VISION_UART_INDEX   3
 #define CAR_VISION_UART_BAUD    UART_BAUD_115200
 #ifndef CAR_VISION_ENABLE
 #define CAR_VISION_ENABLE       1
 #endif
-#if CAR_UART_INDEX != 0 || CAR_VISION_UART_INDEX != 2
-#error This board requires UART_0 for Bluetooth and UART_2 for vision
+#if CAR_UART_INDEX != 0 || CAR_VISION_UART_INDEX != 3
+#error This board requires UART_0 for Bluetooth and UART_3 for vision
 #endif
 #if CAR_VISION_ENABLE != 0 && CAR_VISION_ENABLE != 1
 #error CAR_VISION_ENABLE must be 0 or 1

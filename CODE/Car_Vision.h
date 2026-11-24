@@ -29,6 +29,13 @@
 #define CAR_VISION_MAX_FRAME     (16U + CAR_VISION_MAX_PAYLOAD)
 #define CAR_VISION_FRAME_GAP_MS  50U
 #define CAR_VISION_MAX_AGE_MS    200U
+#define CAR_VISION_STATUS_TIMEOUT_MS 1000U
+
+typedef enum {
+    VISION_CAMERA_UNKNOWN,
+    VISION_CAMERA_NO_FRAME,
+    VISION_CAMERA_STREAMING
+} CarVisionCameraStatus;
 
 /*
  * 道路观测有效位掩码，可按位组合；
@@ -115,6 +122,8 @@ typedef struct
     uint32_t accepted_frames;  /* 已接受帧数，含 HELLO */
     uint32_t bad_frames;       /* 长度越界或 CRC 错误的帧数 */
     uint32_t rejected_frames;  /* CRC 正确但业务字段不合法的帧数 */
+    uint32_t camera_status_ms;
+    CarVisionCameraStatus camera_status;
 
     CarVisionObservation observation; /* 最近一份有效道路观测 */
 
@@ -136,6 +145,9 @@ void CarVision_Init(CarVision *v);
  * @note 保留会话、最近序号和统计。数独块仅在切换会话或完整初始化时清除。
  */
 void CarVision_Invalidate(CarVision *v);
+
+/* Independent of the race session and road detection. */
+CarVisionCameraStatus CarVision_GetCameraStatus(const CarVision *v, uint32_t now_ms);
 
 /**
  * @brief 更新一个字节的 CRC16-CCITT-FALSE，返回新的累计值。

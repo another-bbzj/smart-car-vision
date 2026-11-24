@@ -103,6 +103,7 @@ class Console:
         self.reader = TelemetryReader()
         self.last_rx = 0
         self.next_tx = 0
+        self.next_link_probe = 0
         self.sample = None
         self.log_file = None
         root.title('NEUQ 双电机蓝牙调试 · 前万向轮底盘')
@@ -195,6 +196,7 @@ class Console:
             self.reader = TelemetryReader()
             self.sample = None
             self.last_rx = time.monotonic()
+            self.next_link_probe = 0
             self.stop()
             self.status.set('已连接，等待停止状态回传，再点击使能。')
         except Exception as exc:
@@ -325,6 +327,9 @@ class Console:
                     # Repeat wheel commands themselves act as the 100ms heartbeat.
                     self.drive()
                     self.next_tx = now + 0.1
+                if self.sample is not None and now - self.last_rx <= 0.35 and now >= self.next_link_probe:
+                    self.next_link_probe = now + 0.5
+                    self.send(packet(7))
             except Exception as exc:
                 self.disconnect(send_stop=False)
                 self.status.set(f'接收失败：{exc}')

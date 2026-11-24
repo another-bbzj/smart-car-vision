@@ -1,11 +1,15 @@
 #pragma once
 
 #include "vision_link.hpp"
+#include <atomic>
+#include <chrono>
 #include <cerrno>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <termios.h>
+#include <thread>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -40,7 +44,29 @@ public:
 
     SerialSender(const SerialSender&) = delete;
     SerialSender& operator=(const SerialSender&) = delete;
-    ~SerialSender() { close(); }
+    ~SerialSender() {
+        statusRunning_ = false;
+        if (statusThread_.joinable()) statusThread_.join();
+        close();
+    }
+
+    // Keep reporting even if opening or reading the camera stalls.
+    void startCameraStatus() {
+        statusRunning_ = true;
+        statusThread_ = std::thread([this] {
+            while (statusRunning_) {
+                const auto last = cameraFrameMs_.load();
+                try {
+                    writeAll(encodeCameraStatus(session_, last != 0 && nowMs() - last <= 1000));
+                } catch (const std::runtime_error&) {
+                    // A blocked UART naturally expires the receiver's status.
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            }
+        });
+    }
+
+    void setCameraStreaming(bool streaming) { cameraFrameMs_ = streaming ? nowMs() : 0; }
 
     // One-shot HELLO. Caller is responsible for ensuring the F407 is physically in STOP.
     void sendHello() { writeAll(encodeHello(session_)); }
@@ -57,11 +83,17 @@ public:
         ++sequence_;
     }
 private:
+    static std::int64_t nowMs() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
     void close() {
         if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
     }
 
     void writeAll(const std::vector<std::uint8_t>& bytes) {
+        const std::lock_guard<std::mutex> lock(writeMutex_);
         std::size_t offset = 0;
         while (offset < bytes.size()) {
             const ssize_t n = ::write(fd_, bytes.data() + offset, bytes.size() - offset);
@@ -78,6 +110,10 @@ private:
     int fd_ = -1;
     std::uint32_t session_;
     std::uint16_t sequence_ = 1; // HELLO uses seq=0; business frames start at 1.
+    std::mutex writeMutex_;
+    std::atomic<std::int64_t> cameraFrameMs_{0};
+    std::atomic<bool> statusRunning_{false};
+    std::thread statusThread_;
 };
 
 } // namespace vision_link

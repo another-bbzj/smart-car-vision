@@ -196,8 +196,15 @@ void CarVision_Invalidate(CarVision *v)
 {
     v->used = 0;                  /* 清空未消费字节 */
     v->have_observation = 0;      /* 道路观测失效 */
+    v->camera_status = VISION_CAMERA_UNKNOWN;
     /* Collected tiles are persistent evidence for this session. Only a new
      * HELLO clears them; a later UART fault must not erase an earlier tile. */
+}
+
+CarVisionCameraStatus CarVision_GetCameraStatus(const CarVision *v, uint32_t now_ms)
+{
+    return now_ms - v->camera_status_ms <= CAR_VISION_STATUS_TIMEOUT_MS ?
+           v->camera_status : VISION_CAMERA_UNKNOWN;
 }
 
 /*
@@ -288,7 +295,20 @@ static void accept(CarVision *v, uint32_t now, uint8_t allow_hello)
         return;
     }
 
-    /* 非 HELLO 帧必须属于当前会话，且发送端处理年龄不能超限。 */
+    /* STATUS 仅用于显示。即使未绑定比赛会话，也可报告相机故障。 */
+    if (type == 3)
+    {
+        if (len != 1 || seq != 0 || age != 0 || p[0] > 1U)
+        {
+            v->rejected_frames++;
+            return;
+        }
+        v->camera_status = p[0] ? VISION_CAMERA_STREAMING : VISION_CAMERA_NO_FRAME;
+        v->camera_status_ms = now;
+        return;
+    }
+
+    /* 道路和数独帧必须属于当前会话，且发送端处理年龄不能超限。 */
     if (!v->session_valid || session != v->session ||
         age > CAR_VISION_MAX_AGE_MS)
     {

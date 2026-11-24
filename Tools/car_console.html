@@ -413,6 +413,7 @@ footer code{font:11px var(--mono);background:#eaf0f6;border-radius:4px;padding:2
    协议常量（与 CODE/Car_Core.c 保持一致）
    ============================================================ */
 const CMD_ARM = 1, CMD_STOP = 2, CMD_WHEELS = 3, CMD_PID = 4, CMD_HEARTBEAT = 5;
+const CMD_LINK_PROBE = 7;
 const CMD_OPENLOOP = 6;
 const RPM_MIN = 20, RPM_MAX = 900, RPM_LIMIT = 900;
 /* 固件命令 6 的 PWM 上限，与 CAR_OPENLOOP_PWM_LIMIT 保持一致。 */
@@ -522,6 +523,7 @@ const app = {
   stopRetries: 0,
   stopTimer: 0,
   lastRx: 0,
+  nextLinkProbe: 0,
   lastSample: null,
   keys: new Set(),
   rpm: 60,
@@ -683,6 +685,7 @@ async function connect() {
     app.writer = app.port.writable.getWriter();
     app.connected = true;
     app.lastRx = 0;
+    app.nextLinkProbe = 0;
     app.lastSample = null;
     app.linkWarned = false;
     app.noTelemetryWarned = false;
@@ -1948,6 +1951,12 @@ setInterval(() => {
 
   if (app.tuning) tuneTick(performance.now());
   else if (app.armed) drive();
+
+  const now = performance.now();
+  if (age <= RX_STALE_MS && now >= app.nextLinkProbe && !app.txQueue.length) {
+    app.nextLinkProbe = now + 500;
+    send(frame(CMD_LINK_PROBE));
+  }
 
   if (age === Infinity) {
     ageVal.textContent = '--';

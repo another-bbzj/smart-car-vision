@@ -125,7 +125,7 @@ flowchart TD
 | 左编码器 A/B | TIM4 PB6/PB7 | 正交四倍频 |
 | 右编码器 A/B | TIM3 PA6/PA7 | 与外部 Flash SPI1 冲突 |
 | 蓝牙 | USART1 PA9 TX / PA10 RX，9600 8N1 | NEUQ 库索引 `UART_0` / `CAR_UART_INDEX=0` |
-| 香橙派视觉 | USART3 PB10 TX / PB11 RX，115200 8N1 | NEUQ 索引 `UART_2`；与蓝牙分属不同串口，可同时启用 |
+| 香橙派视觉 | UART4 PC10 TX / PC11 RX，115200 8N1 | NEUQ 索引 `UART_3`；与蓝牙分属不同串口，可同时启用 |
 | 调试打印 | 关闭 | USART1 由蓝牙独占，LCD/I²C 初始化时的 printf 不发送到串口 |
 | MPU6050 | I²C3 PA8 SCL / PC9 SDA，400 kHz | 7 位地址 0x68；库宏使用移位地址 `0x68 << 1` |
 | LCD | SPI3 PB3 SCK、PB5 MOSI、PB4 CS | DC=PD5，BL=PD3，RST=PE2 |
@@ -334,7 +334,7 @@ VERSION=1，多字节字段大端；CRC16-CCITT-FALSE：0x1021、初值 0xFFFF�
 | 增加菜单页 | `Car_Menu.h/.c` | 分类和条目数量、索引、32字符行宽、返回/长按、状态门控与渲染测试 |
 | 增加掉电参数 | `Car_Params`、Flash适配、菜单状态 | 版本兼容、校验、默认值、断电回退、链接区及迁移策略 |
 | 增加传感器/遥测 | 前台采样、时间戳快照、`My_Vofa` | 不阻塞PIT；若改变16通道布局同步所有上位机解析 |
-| 改串口/引脚 | `Car_Config.h`、驱动、回调和硬件错误处理 | 当前编译约束固定蓝牙索引3、视觉索引2，仅改一个宏不构成完整迁移 |
+| 改串口/引脚 | `Car_Config.h`、驱动、回调和硬件错误处理 | 当前编译约束固定蓝牙索引0、视觉索引3，仅改一个宏不构成完整迁移 |
 
 新增 `.c` 必须加入 `MDK-ARM/*.uvprojx` 的文件组；主机测试脚本手写了源文件列表，也要同步。保留底层库版权与许可证声明。
 

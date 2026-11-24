@@ -658,11 +658,11 @@ static void execute(Car_Core *c)
 void Car_FeedByte(Car_Core *c, uint8_t byte)
 {
     /*
-     * 命令 1~6 对应的负载长度：0、0、4、7、0、3。
+     * 命令 1~7 对应的负载长度：0、0、4、7、0、3、0。
      * 下标 0 占位，保证可以直接用命令号索引；先核验长度，
      * 才能保证后续写入 c->data[7] 不会越界。
      */
-    static const uint8_t lengths[7] =
+    static const uint8_t lengths[] =
     {
         255,                                         /* 下标 0：无效命令占位 */
         0,                                           /* 命令 1：ARM，无负载 */
@@ -670,7 +670,8 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
         4,                                           /* 命令 3：WHEELS，左右各 2 字节 */
         7,                                           /* 命令 4：PID，轮号 + 3 个 uint16 */
         0,                                           /* 命令 5：HEARTBEAT，无负载 */
-        3                                            /* 命令 6：OPENLOOP，轮号 + int16 */
+        3,                                           /* 命令 6：OPENLOOP，轮号 + int16 */
+        0                                            /* 命令 7：LINK_PROBE，无负载 */
     };
 
     /*
@@ -708,7 +709,7 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
 
         case 2:
             /* 状态 2：接收命令号，并开始累计 CRC。 */
-            if (byte < 1 || byte > 6)
+            if (byte < 1 || byte >= sizeof lengths)
             {
                 c->result = 3;
                 c->parse_state = (byte == 0xC3) ? 1 : 0;
@@ -751,7 +752,10 @@ void Car_FeedByte(Car_Core *c, uint8_t byte)
 
             if (byte == c->crc)
             {
-                execute(c);                          /* CRC 正确，执行命令 */
+                if (c->cmd == 7)
+                    c->bt_probe_us = 2500000U;       /* 仅用于显示，禁止刷新运行看门狗 */
+                else
+                    execute(c);
             }
             else
             {
@@ -794,6 +798,7 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
     float dt;                                     /* 实际控制周期，单位秒 */
 
     dt = (float)dt_us * 0.000001f;                /* 微秒换算为秒 */
+    c->bt_probe_us = c->bt_probe_us > dt_us ? c->bt_probe_us - dt_us : 0U;
 
     /* 周期越界时停止控制，避免用异常采样间隔计算速度和积分。 */
     if (dt_us < CAR_MIN_CONTROL_US || dt_us > CAR_MAX_CONTROL_US)

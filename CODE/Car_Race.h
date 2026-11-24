@@ -6,6 +6,13 @@
  * from the actual start, increasing in the prescribed driving direction. */
 #define RACE_RADIUS_M        0.0325f /* 65 mm diameter; verify loaded rollout */
 #define RACE_TRACK_M         0.173f  /* (200 mm outside + 146 mm inside) / 2; verify by rotation */
+#define RACE_DEFAULT_RPM     160U    /* ~0.545 m/s nominal cruise RPM */
+#define RACE_MIN_RPM         20U     /* Safe low-speed test floor */
+#define RACE_MAX_RPM         900U    /* Matches CAR_RPM_LIMIT (90% of 1000 rpm) */
+#define RACE_RPM_STEP_FINE   5U      /* Single-press UP/DOWN step in menu */
+#define RACE_RPM_STEP_COARSE 20U     /* Auto-repeat UP/DOWN step in menu */
+#define RACE_RPM_TO_MPS(rpm) ((float)(rpm) * (6.2831853f * RACE_RADIUS_M / 60.0f))
+#define RACE_MPS_TO_RPM(mps) ((float)(mps) * (60.0f / (6.2831853f * RACE_RADIUS_M)))
 #define RACE_LAP_M           55.061f
 #define RACE_GAP_ENTRY_M     0.0f   /* 0 = visually qualified entry, no course survey */
 #define RACE_FINISH_M        (2.0f * RACE_LAP_M)
@@ -31,6 +38,7 @@ typedef struct {
     float distance, yaw, entry, entry_yaw, offset, obstacle_m, goal_m;
     float last_gap, last_action, straight_m;
     float last_curve;            /* last accepted curvature, 1/m */
+    float target_rpm;            /* configured cruise wheel speed, rpm */
     uint32_t entered_ms, still_ms, last_road_ms;
     uint16_t last_sequence;
     uint8_t lap, clear_frames, held_element, have_sequence, timing_stop;
@@ -38,6 +46,8 @@ typedef struct {
 } CarRace;
 typedef struct { float rpm[2]; } RaceDrive;
 void Race_Start(CarRace *r);
+void Race_StartWithRpm(CarRace *r, float target_rpm);
+float Race_ClampRpm(float target_rpm);
 RaceDrive Race_Step(CarRace *r, const CarVisionObservation *obs, float left_m,
                     float right_m, float dt, float gyro_rad_s, uint8_t gyro_ok,
                     uint8_t stationary, uint32_t now_ms);

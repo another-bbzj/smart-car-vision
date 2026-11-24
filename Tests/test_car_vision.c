@@ -90,6 +90,21 @@ int main(void)
     assert(CarVision_GetObservation(&v,0x10U,&o));
     assert(!CarVision_GetObservation(&v,0x100U,&o));
     CarVision_Invalidate(&v);assert(!CarVision_GetObservation(&v,0x100U,&o));
+    /* A diagnostic sender can report camera failure without claiming a race session. */
+    data[0] = 0;
+    n = make_frame(f,3,0,456,0,data,1);
+    feed(&v,f,n,0xfffffff0U,0);
+    assert(CarVision_GetCameraStatus(&v,0x10U) == VISION_CAMERA_NO_FRAME);
+    assert(v.session==789 && v.last_sequence==2 && !CarVision_GetObservation(&v,0x10U,&o));
+    data[0] = 1;
+    n = make_frame(f,3,0,456,0,data,1);
+    feed(&v,f,n,100U,0);
+    assert(CarVision_GetCameraStatus(&v,100U) == VISION_CAMERA_STREAMING);
+    f[n-1] ^= 1;
+    feed(&v,f,n,1000U,0);
+    assert(CarVision_GetCameraStatus(&v,1101U) == VISION_CAMERA_UNKNOWN);
+    CarVision_Invalidate(&v);
+    assert(CarVision_GetCameraStatus(&v,100U) == VISION_CAMERA_UNKNOWN);
     puts("vision interface: all checks passed");
     return 0;
 }

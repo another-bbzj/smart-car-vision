@@ -26,6 +26,28 @@ static void openloop(Car_Core *c, unsigned wheel, int pwm)
 static void ticks(Car_Core *c, int n, int l, int r)
 { int i; for(i=0;i<n;i++) Car_Tick(c,l,r); }
 
+static void test_bluetooth_probe(void)
+{
+    Car_Core c;
+    Car_Init(&c);
+    assert(!c.bt_probe_us);
+    c.result = 2;
+    command(&c, 7, 0, 0);
+    assert(c.bt_probe_us && c.state == CAR_STOP && c.result == 2 && !c.frames);
+    ticks(&c, 500, 0, 0);
+    assert(!c.bt_probe_us);
+    command(&c, 1, 0, 0);
+    for (unsigned i = 0; i < CAR_LINK_TIMEOUT_MS / CAR_PERIOD_MS; ++i) {
+        command(&c, 7, 0, 0);
+        Car_Tick(&c, 0, 0);
+    }
+    assert(c.state == CAR_FAULT && c.fault == CAR_LINK_FAULT && c.bt_probe_us);
+    Car_LocalStop(&c);
+    assert(Car_StartRace(&c));
+    command(&c, 7, 0, 0);
+    assert(c.autonomous && c.state == CAR_RUN && c.bt_probe_us);
+}
+
 static void test_right_reverse_protection(void)
 {
     Car_Core c;
@@ -128,6 +150,7 @@ static void test_open_loop(void)
 
 int main(void)
 {
+    test_bluetooth_probe();
     Car_Core c;
     test_right_reverse_protection();
     test_open_loop();

@@ -22,7 +22,7 @@
  *   - TIM4 / TIM3：左右轮正交编码器（TIM3 的 PA6/PA7 与 W25Q 的
  *                  MISO/MOSI 复用）；
  *   - USART1：蓝牙 JDY-31，NEUQ 库设备索引 0（PA9 TX / PA10 RX）；
- *   - USART3：香橙派视觉串口，NEUQ 库设备索引 2（PB10 TX / PB11 RX）；
+ *   - UART4：香橙派视觉串口，NEUQ 库设备索引 3（PC10 TX / PC11 RX）；
  *   - TIM5：默认 1 MHz 自由运行计数器，用于测量真实控制周期；启用
  *           CAR_RIGHT_ENCODER_ON_TIM5 后改作右编码器，时基切换到 TIM7；
  *   - PIT_CH1：5 ms 控制节拍，实际周期由上述时基修正。
@@ -81,8 +81,8 @@
 extern UART_HandleTypeDef UART_0_handle;
 extern uint8_t UART_0_RX_dat;
 #if CAR_VISION_ENABLE
-extern UART_HandleTypeDef UART_2_handle;
-extern uint8_t UART_2_RX_dat;
+extern UART_HandleTypeDef UART_3_handle;
+extern uint8_t UART_3_RX_dat;
 #endif
 
 /* 左右轮编码器定时器句柄，来源：NEUQ_Encoder_init 初始化。 */
@@ -222,6 +222,9 @@ static void poll_menu(void)
         mask = __get_PRIMASK();
         __disable_irq();
         view.menu = menu;
+        view.race_rpm = CarMenu_GetRaceRpm(&menu);
+        view.session_valid = vision.session_valid;
+        view.vision_disabled = !CAR_VISION_ENABLE;
         {
             CarParams current;
             CarParams_Capture(&car,&current);
@@ -247,6 +250,9 @@ static void poll_menu(void)
         view.gains[1] = pid->ki;
         view.gains[2] = pid->kd;
         view.fresh = !vision_rx_fault && CarVision_GetObservation(&vision,now,&view.obs);
+        view.camera_status = vision_rx_fault ? VISION_CAMERA_UNKNOWN :
+                             CarVision_GetCameraStatus(&vision, now);
+        view.bt_connected = !rx_fault && car.bt_probe_us != 0U;
         view.vision_ok = vision.accepted_frames;
         view.vision_bad = vision.bad_frames;
         view.vision_rejected = vision.rejected_frames;
@@ -281,30 +287,57 @@ static void race_tick(int32_t l, int32_t r, uint32_t dt_us)
     }
     /* Stop wins over queued OK and over any manual ARM received in this tick.
      * Consume the entire stop press, including bounce and UP repeats. */
-    if (up && (car.state != CAR_STOP || stop_release_ms)) {
+    if (up && (car.state != CAR_STOP || menu.race_armed || stop_release_ms)) {
+        if (menu.race_armed) {
+            CarMenu_Disarm(&menu);
+            menu_refresh = 1;
+        }
         Car_LocalStop(&car);
         stop_release_ms = KEY_DEBOUNCE_COUNT * KEY_SCAN_PERIOD_MS;
     } else if (stop_release_ms) {
+        CarMenu_Disarm(&menu);
         Car_LocalStop(&car);
         stop_release_ms -= CAR_PERIOD_MS;
     }
-    if (finish_pending) Car_LocalStop(&car);
+    if (finish_pending) {
+        CarMenu_Disarm(&menu);
+        Car_LocalStop(&car);
+    }
     menu_start = CarMenu_StartCondition(&car,still,finish_pending,
                                         fresh && !vision_rx_fault ? &o : NULL,last_race_session);
-    while (My_Key_get_event(&key)) {
-        MenuAction action;
-        if (stop_release_ms || (up && key.id != KEY_UP)) continue;
-        action = CarMenu_Key(&menu,key,&car,menu_start);
-        if (action == MENU_SAVE_PARAMS) {
-            params_pending = 1;
-            Car_LocalStop(&car);
-            break;
+    {
+        uint8_t launch = 0;
+        uint8_t prev_armed = menu.race_armed;
+        uint16_t prev_rpm = menu.race_rpm;
+        while (My_Key_get_event(&key)) {
+            MenuAction action;
+            if (stop_release_ms || (up && key.id != KEY_UP)) continue;
+            action = CarMenu_Key(&menu,key,&car,menu_start);
+            if (action == MENU_SAVE_PARAMS) {
+                params_pending = 1;
+                CarMenu_Disarm(&menu);
+                Car_LocalStop(&car);
+                break;
+            }
+            if (action == MENU_LAUNCH) {
+                launch = 1;
+                break;
+            }
         }
-        if (action == MENU_LAUNCH && Car_StartRace(&car)) {
-            Race_Start(&race);
-            last_race_session=o.session;
+        if (!launch && !params_pending && !stop_release_ms && !up) {
+            if (CarMenu_PollArmed(&menu, menu_start) == MENU_LAUNCH) {
+                launch = 1;
+            }
+        }
+        if (menu.race_armed != prev_armed || menu.race_rpm != prev_rpm) {
+            menu_refresh = 1;
+        }
+        if (launch && menu_start == START_READY && Car_StartRace(&car)) {
+            Race_StartWithRpm(&race, (float)CarMenu_GetRaceRpm(&menu));
+            last_race_session = o.session;
             result_status = SUDOKU_COLLECTING;
             menu_start = START_STOP_FIRST;
+            menu_refresh = 1;
         }
     }
     if (car.autonomous) {
@@ -562,7 +595,7 @@ void Car_UART_RX_Handler(uint8_t byte)
 /*
  * 函数名称：Car_Vision_UART_RX_Handler
  * 函数功能：视觉串口单字节接收回调，只把字节写入视觉 FIFO。
- * 参数说明：byte —— 刚收到的原始字节，来源：USART3 接收中断。
+ * 参数说明：byte —— 刚收到的原始字节，来源：UART4 接收中断。
  * 返回参数：无。
  * 使用示例：
  *     // 由 NEUQ 库串口接收回调自动触发
@@ -656,10 +689,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         HAL_UART_Receive_IT(&UART_0_handle, &UART_0_RX_dat, 1);
     }
 #if CAR_VISION_ENABLE
-    else if (huart == &UART_2_handle)
+    else if (huart == &UART_3_handle)
     {
         vision_rx_fault = 1;    /* 视觉通道异常 */
-        HAL_UART_Receive_IT(&UART_2_handle, &UART_2_RX_dat, 1);
+        HAL_UART_Receive_IT(&UART_3_handle, &UART_3_RX_dat, 1);
     }
 #endif
 }
@@ -742,6 +775,7 @@ void Car_PIT_Handler(void)
      */
     if (rx_fault)
     {
+        car.bt_probe_us = 0U;
         if (!car.autonomous) Car_Fault(&car, CAR_RX_FAULT);
 
         while (NEUQ_FIFO_read_byte(&rx_fifo, &byte) == NEUQ_FIFO_OK)
@@ -883,7 +917,7 @@ static void poll_params(void)
     __set_PRIMASK(mask);
 
     /* Foreground only, interrupts enabled for HAL timeouts; PIT is gated above. */
-    My_Lcd_print(3,UI_STYLE_WARN,"Saving... keep power on");
+    My_Lcd_print(3,UI_STYLE_WARN,"保存中...请勿断电");
     status=CarParams_FlashSave(&current);
 
     mask=__get_PRIMASK();
@@ -893,6 +927,7 @@ static void poll_params(void)
         params_saved=1;
     }
     menu.params_status=status;
+    CarMenu_Disarm(&menu);
     Car_LocalStop(&car);
     NEUQ_FIFO_init(&rx_fifo,rx_buffer,sizeof rx_buffer);
     NEUQ_FIFO_init(&vision_fifo,vision_buffer,sizeof vision_buffer);
@@ -900,7 +935,7 @@ static void poll_params(void)
     /* Clear hardware bytes left over while Flash blocked the CPU. */
     __HAL_UART_CLEAR_OREFLAG(&UART_0_handle);
 #if CAR_VISION_ENABLE
-    __HAL_UART_CLEAR_OREFLAG(&UART_2_handle);
+    __HAL_UART_CLEAR_OREFLAG(&UART_3_handle);
 #endif
     CarVision_Invalidate(&vision);
     gyro_valid=0;
@@ -949,6 +984,7 @@ void Car_Main(void)
     NEUQ_Debug_set_output_enabled(0);
 
     Car_Init(&car);                                /* 初始化控制对象 */
+    CarMenu_Init(&menu);
     {
         int loaded=CarParams_Load(&CarParams_FlashIO,&saved_params);
         params_saved=loaded==1 && CarParams_Apply(&car,&saved_params);

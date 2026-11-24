@@ -73,6 +73,7 @@ class DrivingSafetyTests(unittest.TestCase):
         self.app.sample = None
         self.app.last_rx = host.time.monotonic()
         self.app.next_tx = 0
+        self.app.next_link_probe = 0
         self.app.rpm = Var(60)
         self.app.status = Var('')
         self.app.values = Var('')
@@ -86,19 +87,31 @@ class DrivingSafetyTests(unittest.TestCase):
         self.app.port.input += struct.pack('<16f', state, fault, *([0] * 14)) + host.TAIL
         self.app.poll()
 
+    def test_link_probe_requires_fresh_telemetry_and_runs_while_stopped(self):
+        self.app.poll()
+        self.assertEqual(self.app.port.sent, [])
+        self.telemetry(0)
+        self.assertEqual(self.app.port.sent, [host.packet(7)])
+        self.app.poll()
+        self.assertEqual(self.app.port.sent, [host.packet(7)])
+        self.app.last_rx -= 1
+        self.app.next_link_probe = 0
+        self.app.poll()
+        self.assertEqual(self.app.port.sent, [host.packet(7)])
+
     def test_cannot_arm_without_stopped_telemetry(self):
         self.app.arm()
         self.assertEqual(self.app.port.sent, [])
         self.telemetry(2, 1)
         self.app.arm()
-        self.assertEqual(self.app.port.sent, [])
+        self.assertEqual(self.app.port.sent, [host.packet(7)])
 
     def test_requires_confirmation_then_release_brakes(self):
         self.telemetry(0)
         self.app.arm()
         self.assertFalse(self.app.armed)
         self.app.set_key('w', True)
-        self.assertEqual(self.app.port.sent, [host.packet(1)])
+        self.assertEqual(self.app.port.sent, [host.packet(7), host.packet(1)])
         self.telemetry(1)
         self.app.set_key('w', True)
         self.assertEqual(self.app.port.sent[-1], host.wheels(60, 60))
@@ -133,6 +146,6 @@ class DrivingSafetyTests(unittest.TestCase):
         self.assertNotIn(host.packet(1), self.app.port.sent)
         self.app.stop_retry_at = 0
         self.app.poll()
-        self.assertEqual(self.app.port.sent, [host.packet(2), host.packet(2)])
+        self.assertEqual(self.app.port.sent, [host.packet(2), host.packet(7), host.packet(2)])
 
 if __name__ == '__main__': unittest.main()

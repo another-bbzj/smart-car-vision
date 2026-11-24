@@ -53,6 +53,25 @@ test('wire commands match firmware golden vectors', () => {
   assert.equal(h.run('hex(wheelsFrame(900,-900)).slice(12,23)'), '03 84 FC 7C');
 });
 
+test('parking sends a periodic link probe only while telemetry is fresh', async () => {
+  const h = harness();
+  const tick = h.intervals[0];
+  h.run('app.lastRx = 0; app.lastSample = null;');
+  tick();
+  assert.equal(h.run('sent.length'), 0);
+  h.run('app.lastRx = performance.now(); app.lastSample = [0, 0];');
+  tick();
+  await flush();
+  assert.equal(h.run('sent.map(bytes => hex(bytes)).join(";")'), 'C3 3C 07 00 6B');
+  await h.advance(501);
+  tick();
+  assert.equal(h.run('sent.length'), 1);
+  h.run('app.lastRx = performance.now();');
+  tick();
+  await flush();
+  assert.equal(h.run('sent.length'), 2);
+});
+
 test('left Kd telemetry is never interpreted as a direction scan result', () => {
   const h = harness();
   for (const kd of [99, 200]) {

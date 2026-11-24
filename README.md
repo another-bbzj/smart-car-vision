@@ -23,7 +23,7 @@ python Tools/car_host.py
 
 **在线版（无需下载、无需 Python）：** <https://another-bbzj.github.io/smart-car-bluetooth/> —— 桌面版 Chrome/Edge 117+ 打开，串口权限在各自电脑上授权。
 
-独立的 USART3 视觉串口使用 PB10/PB11，115200。比赛模式消费道路曲率、赛道元素、路障距离及四份数独子块。帧格式和 Python 参考发送器见 [图像通信接口](Docs/Vision_Interface.md)。
+独立的 UART4 视觉串口使用 PC10/PC11，115200。比赛模式消费道路曲率、赛道元素、路障距离及四份数独子块。帧格式和 Python 参考发送器见 [图像通信接口](Docs/Vision_Interface.md)。
 
 速度控制已加入实际采样时间、测量微分滤波、抗积分饱和、可标定前馈和双轮共享进度的加速度/加加速度受限参考，详见[速度控制升级](Docs/Speed_Control_Upgrade.md)。尚未进行实车高速过弯验证。
 
