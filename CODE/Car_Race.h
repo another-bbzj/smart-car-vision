@@ -18,6 +18,7 @@
 #define RACE_FINISH_M        (2.0f * RACE_LAP_M)
 #define RACE_BYPASS_SIDE     1.0f   /* +1 left, -1 right */
 #define RACE_BYPASS_OFFSET_M 0.18f
+#define RACE_YELLOW_CONFIRM_FRAMES 3U
 #define RACE_GYRO_SIGN       1.0f   /* chassis CCW is positive */
 
 /* Slow down during a short dropout or single-edge estimate. Only a measured
@@ -27,17 +28,20 @@
 
 typedef enum { RACE_TRACK, RACE_GAP, RACE_BYPASS, RACE_RED,
                RACE_FINISHED, RACE_FAULT } RacePhase;
+typedef enum { RACE_FAULT_NONE, RACE_FAULT_PERIOD, RACE_FAULT_VISION,
+               RACE_FAULT_GAP, RACE_FAULT_BYPASS, RACE_FAULT_RED } RaceFaultReason;
 typedef struct {
     RacePhase phase;
+    RaceFaultReason fault_reason;
     float distance, yaw, entry, entry_yaw, offset, obstacle_m, goal_m;
     float last_gap, last_action, straight_m;
     float last_curve;            /* last accepted curvature, 1/m */
     float last_measured_curve;   /* keep gap-entry geometry independent of single-edge estimates */
     float target_rpm;            /* configured cruise wheel speed, rpm */
-    uint32_t entered_ms, still_ms, last_road_ms;
+    uint32_t entered_ms, still_ms, last_road_ms, last_yellow_ms;
     uint16_t last_sequence;
     uint8_t lap, clear_frames, held_element, have_sequence, timing_stop;
-    uint8_t degraded, have_step_time;
+    uint8_t degraded, have_step_time, yellow_frames;
 } CarRace;
 typedef struct { float rpm[2]; } RaceDrive;
 void Race_Start(CarRace *r);

@@ -110,6 +110,7 @@ typedef struct
 
     /* ---------- 计时与保护，单位均为微秒 ---------- */
     uint32_t link_us;        /* 运行通信看门狗计时 */
+    uint32_t timing_fault_us; /* 首次触发故障 5 的实测控制周期 */
     uint32_t bt_probe_us;    /* 上位机连接探测剩余时间，与运行看门狗独立 */
     uint32_t stall_us[2];    /* 左右轮堵转计时 */
     uint32_t direction_us[2];/* 左右轮方向异常计时 */

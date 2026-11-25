@@ -57,7 +57,7 @@ public:
             while (statusRunning_) {
                 const auto last = cameraFrameMs_.load();
                 try {
-                    writeAll(encodeCameraStatus(session_, last != 0 && nowMs() - last <= 1000));
+                    writeFrame(encodeCameraStatus(session_, last != 0 && nowMs() - last <= 1000));
                 } catch (const std::runtime_error&) {
                     // A blocked UART naturally expires the receiver's status.
                 }
@@ -69,18 +69,19 @@ public:
     void setCameraStreaming(bool streaming) { cameraFrameMs_ = streaming ? nowMs() : 0; }
 
     // Announce the unchanged session. The F407 binds a new session only when stopped.
-    void sendHello() { writeAll(encodeHello(session_)); }
+    bool sendHello() { return writeFrame(encodeHello(session_)); }
 
     // Send current track/element observation and advance the shared business sequence.
-    void sendTrack(std::uint16_t processingAgeMs, const TrackObservation& observation) {
-        const auto frame = encodeTrack(sequence_, session_, processingAgeMs, observation);
-        writeAll(frame);
+    bool sendTrack(std::uint16_t processingAgeMs, const TrackObservation& observation) {
+        if (!writeFrame(encodeTrack(sequence_, session_, processingAgeMs, observation))) return false;
         sequence_ = static_cast<std::uint16_t>(sequence_ + 1);
+        return true;
     }
 
-    void sendTile(uint16_t age, uint8_t index, const std::array<uint8_t,9>& cells) {
-        writeAll(encodeTile(sequence_,session_,age,index,cells));
+    bool sendTile(uint16_t age, uint8_t index, const std::array<uint8_t,9>& cells) {
+        if (!writeFrame(encodeTile(sequence_,session_,age,index,cells))) return false;
         ++sequence_;
+        return true;
     }
 private:
     static std::int64_t nowMs() {
@@ -92,7 +93,7 @@ private:
         if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
     }
 
-    void writeAll(const std::vector<std::uint8_t>& bytes) {
+    bool writeFrame(const std::vector<std::uint8_t>& bytes) {
         const std::lock_guard<std::mutex> lock(writeMutex_);
         std::size_t offset = 0;
         while (offset < bytes.size()) {
@@ -100,11 +101,13 @@ private:
             if (n > 0) { offset += static_cast<std::size_t>(n); continue; }
             if (n < 0 && errno == EINTR) continue;
             if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                // Never wait indefinitely behind a stale vision queue.
-                throw std::runtime_error("Vision UART would block; drop frame rather than queue stale data");
+                // Drop any unsent suffix; the F407 parser resynchronizes on the next frame.
+                return false;
             }
+            if (n == 0) throw std::runtime_error("Vision UART write made no progress");
             throw std::runtime_error("Vision UART write failed: " + std::string(std::strerror(errno)));
         }
+        return true;
     }
 
     int fd_ = -1;

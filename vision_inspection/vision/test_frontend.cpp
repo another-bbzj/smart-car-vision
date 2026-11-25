@@ -13,6 +13,38 @@ cv::Mat road() {
     return image;
 }
 
+void checkCrossRecovery() {
+    using bird::CrossState;
+    const cv::Point2f vehicle(300.f, 460.f), left(245.f, 380.f), right(355.f, 380.f);
+    bird::CrossStateMachine cross;
+    const auto update = [&](bool found, std::size_t leftCount, std::size_t rightCount) {
+        return cross.update(found, left, right, vehicle, leftCount, rightCount);
+    };
+    const auto enter = [&] {
+        update(true, 30, 30);
+        check(update(true, 30, 30) == CrossState::Begin &&
+              update(true, 30, 30) == CrossState::In, "confirmed near corners enter the cross");
+    };
+    const auto goodFrames = [&](int count) {
+        for (int i = 0; i < count; ++i) update(false, 30, 30);
+        return cross.state;
+    };
+
+    enter();
+    check(goodFrames(5) == CrossState::In, "brief two-edge recovery does not leave the cross");
+    update(true, 30, 30);
+    check(goodFrames(5) == CrossState::In, "new cross corners reset the fallback count");
+    update(false, 19, 30);
+    check(goodFrames(5) == CrossState::In, "a short edge resets the fallback count");
+    check(goodFrames(1) == CrossState::None, "six clean two-edge frames clear a false cross");
+
+    enter();
+    update(false, 10, 10);
+    check(update(false, 10, 10) == CrossState::In, "a real cross continues while both edges are short");
+    check(goodFrames(2) == CrossState::In, "a real cross waits for three recovered frames");
+    check(goodFrames(1) == CrossState::None, "a real cross keeps the original recovery path");
+}
+
 void checkRingRecovery() {
     using bird::RingState;
     std::vector<cv::Point2f> left, right, curvedRight;
@@ -54,6 +86,59 @@ void checkRingRecovery() {
     for (int i = 0; i < 3; ++i)
         ring.update(false, false, false, false, left, curvedRight);
     check(ring.state == RingState::LeftRunning, "turn evidence still advances a genuine left entry");
+}
+
+void checkRingEntryRejectsBriefNotch() {
+    std::vector<cv::Point2f> left, right;
+    for (int i = 0; i < 65; ++i) {
+        left.emplace_back(205.f, 460.f - 5.f * i);
+        right.emplace_back(395.f, 460.f - 5.f * i);
+    }
+    auto notched = left;
+    notched[8].x += 11.f;
+    cv::Point2f corner;
+    float angle = 0.f;
+    check(bird::findCorner(notched, corner, angle) && bird::hasStraightCorridor(notched, right),
+          "short stripe-like notch produces a corner within an otherwise straight corridor");
+    check(!bird::detectLeftRingBegin(notched, right, corner), "straight corridor vetoes a false left ring entry");
+    bird::RingStateMachine ring;
+    ring.state = bird::RingState::LeftIn;
+    for (int i = 0; i < 6; ++i)
+        ring.update(false, false, true, false, notched, right);
+    check(ring.state == bird::RingState::None, "a local notch cannot prevent recovery to ordinary tracking");
+    notched = right;
+    notched[8].x -= 11.f;
+    check(!bird::detectRightRingBegin(left, notched, corner), "straight corridor vetoes a false right ring entry");
+
+    auto mouth = left;
+    for (int i = 15; i < 65; ++i) mouth[i] = {205.f - 5.f * (i - 15), 385.f};
+    check(bird::detectLeftRingBegin(mouth, right, corner), "a sustained opening still qualifies for a left ring");
+}
+
+void checkStraightPreview() {
+    const cv::Point2f vehicle(300.f, 460.f);
+    const cv::Point2f near(287.f, 380.f); // ~3 cm, as in the captured packet
+    std::vector<cv::Point2f> left, right, bendLeft, bendRight;
+    for (int i = 0; i < 60; ++i) {
+        const float row = 460.f - 5.f * i;
+        const float bend = 0.08f * i * i;
+        left.emplace_back(191.f, row);
+        right.emplace_back(383.f, row);
+        bendLeft.emplace_back(191.f + bend, row);
+        bendRight.emplace_back(383.f + bend, row);
+    }
+    const auto far = bird::straightRoadPreview(left, right, vehicle, near, 192.f);
+    const auto old = control::calculatePurePursuit(vehicle, near, config::kMetersPerPixel, config::kWheelBaseMeters);
+    const auto corrected = control::calculatePurePursuit(vehicle, far, config::kMetersPerPixel, config::kWheelBaseMeters);
+    check(far.y < near.y && far.x == near.x && corrected.valid &&
+          corrected.curvature < 0.f && std::abs(corrected.curvature) < std::abs(old.curvature) * 0.4f,
+          "straight road extends lookahead and reduces overcorrection without losing steering direction");
+    const cv::Point2f nearBend(287.f + 0.08f * 16.f * 16.f, 380.f);
+    check(bird::straightRoadPreview(bendLeft, bendRight, vehicle, nearBend, 192.f) == nearBend,
+          "a bent corridor keeps the original short lookahead");
+    right.resize(23);
+    check(bird::straightRoadPreview(left, right, vehicle, near, 192.f) == near,
+          "missing far boundary never selects an extrapolated target");
 }
 
 void checkSingleEdgeRecovery() {
@@ -103,7 +188,10 @@ void checkSingleEdgeRecovery() {
 
 int main(int argc, char** argv) {
     try {
+        checkCrossRecovery();
         checkRingRecovery();
+        checkRingEntryRejectsBriefNotch();
+        checkStraightPreview();
         checkSingleEdgeRecovery();
         const track::FrontendConfig c;
         auto straight = road();
@@ -134,6 +222,16 @@ int main(int argc, char** argv) {
         check(track::segment(narrowGap, c).roadMask.at<uchar>(350,320) == 0, "closing does not bridge blue strip");
         auto edgeRoad = road(); cv::rectangle(edgeRoad, cv::Rect(0,0,210,480), cv::Scalar(220,220,220), cv::FILLED);
         check(!track::segment(edgeRoad, c).seedFound, "road with clipped boundary is reported unavailable");
+        auto clippedNear = road();
+        clippedNear(cv::Rect(0, 200, 220, 280)).setTo(cv::Scalar(220,220,220));
+        check(track::segment(clippedNear, c).seedFound, "continuous road can acquire both edges above a clipped near section");
+        cv::Mat seamedNear = clippedNear.clone();
+        cv::rectangle(seamedNear, cv::Rect(318, 300, 5, 180), cv::Scalar(35,35,35), cv::FILLED);
+        check(track::segment(seamedNear, c).seedFound, "narrow center seam leaves a continuous adjacent road path");
+        seamedNear.row(230).setTo(cv::Scalar(180,50,20));
+        check(!track::segment(seamedNear, c).seedFound, "adjacent continuity cannot bridge an actual gap");
+        clippedNear.row(230).setTo(cv::Scalar(180,50,20));
+        check(!track::segment(clippedNear, c).seedFound, "extended seed search cannot cross a blue strip");
         check(!track::segment(cv::Mat(), c).seedFound, "empty input has no seed");
         bool rejected = false;
         try { auto invalid = c; invalid.closeKernel = 4; invalid.validate(); } catch (const std::invalid_argument&) { rejected = true; }
@@ -145,6 +243,13 @@ int main(int argc, char** argv) {
         check(inside, "binary boundary walker never steps onto blue background");
         check(mazeWalk(cv::Mat::zeros(480,640,CV_8UC1),320,450,1,true).empty(), "black mask does not become traversable");
         ProcessOptions options; options.mode = TrackMode::Hsv;
+        auto offTrack = grayBackground.clone();
+        cv::circle(offTrack, {320,350}, 16, cv::Scalar(0,0,220), cv::FILLED);
+        resetVisionState();
+        FrameResult clutter;
+        for (int i = 0; i < 8; ++i) clutter = img_handle(offTrack, false, options);
+        check(clutter.obstacles.hasPrimary && clutter.wireObservation.element == vision_link::Element::None,
+              "off-track color remains diagnostic without publishing a race element");
         resetVisionState();
         (void)img_handle(straight, false, options);
         const auto lost = img_handle(blue, false, options);

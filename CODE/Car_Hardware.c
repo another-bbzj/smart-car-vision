@@ -125,6 +125,7 @@ static unsigned gyro_samples;
 static float gyro_bias;
 static CarMenu menu;
 static StartCondition menu_start;
+static CarMenuRoadConfirm launch_road;
 static uint8_t result_board[36], result_status;
 static CarParams saved_params;
 static uint8_t params_saved;
@@ -193,6 +194,36 @@ static void poll_gyro(void)
     }
 }
 
+static unsigned key_led_elapsed_ms;
+static unsigned key_led_toggles;
+
+/* UP, DOWN, OK and BACK start one to four pulses on LED4. */
+static void status_led_key(uint8_t id)
+{
+    key_led_elapsed_ms = 0U;
+    key_led_toggles = 2U * ((unsigned)id + 1U) - 1U;
+    NEUQ_GPIO_write(CAR_KEY_LED_PIN, GPIO_High);
+}
+
+static void status_led_tick(void)
+{
+    static unsigned heartbeat_elapsed_ms;
+    heartbeat_elapsed_ms += CAR_PERIOD_MS;
+    if (heartbeat_elapsed_ms >= 500U) {
+        heartbeat_elapsed_ms -= 500U;
+        NEUQ_GPIO_toggle(CAR_HEARTBEAT_LED_PIN);
+    }
+
+    if (key_led_toggles) {
+        key_led_elapsed_ms += CAR_PERIOD_MS;
+        if (key_led_elapsed_ms >= 150U) {
+            key_led_elapsed_ms -= 150U;
+            NEUQ_GPIO_toggle(CAR_KEY_LED_PIN);
+            --key_led_toggles;
+        }
+    }
+}
+
 static void poll_menu(void)
 {
     static MenuView view;
@@ -222,6 +253,7 @@ static void poll_menu(void)
         mask = __get_PRIMASK();
         __disable_irq();
         view.menu = menu;
+        view.uptime_s = now / 1000U;
         view.race_rpm = CarMenu_GetRaceRpm(&menu);
         view.session_valid = vision.session_valid;
         view.vision_disabled = !CAR_VISION_ENABLE;
@@ -232,9 +264,12 @@ static void poll_menu(void)
             view.params_dirty = !params_saved || !CarParams_Equal(&current,&saved_params);
         }
         view.start = menu_start;
+        view.launch_road_count = launch_road.count;
         view.state = car.state;
         view.autonomous = car.autonomous;
         view.fault = car.fault;
+        view.timing_fault_us = car.timing_fault_us;
+        view.race_fault_reason = race.fault_reason;
         view.phase = (uint8_t)race.phase;
         view.degraded = car.autonomous ? race.degraded : 0;
         view.lap = race.lap;
@@ -303,7 +338,17 @@ static void race_tick(int32_t l, int32_t r, uint32_t dt_us)
         CarMenu_Disarm(&menu);
         Car_LocalStop(&car);
     }
-    menu_start = CarMenu_StartCondition(&car,still,finish_pending,
+    /* Finish processing owns the tiles until the result snapshot is complete. */
+    if (car.state == CAR_STOP && !finish_pending && last_race_session != 0U) {
+        if (vision.session == last_race_session) {
+            CarVision_CloseRaceSession(&vision);
+            fresh = 0;
+        }
+        last_race_session = 0U;
+        memset(&launch_road, 0, sizeof launch_road);
+        CarMenu_Disarm(&menu);
+    }
+    menu_start = CarMenu_StartCondition(&launch_road,&car,still,finish_pending,
                                         fresh && !vision_rx_fault ? &o : NULL,last_race_session);
     {
         uint8_t launch = 0;
@@ -311,6 +356,7 @@ static void race_tick(int32_t l, int32_t r, uint32_t dt_us)
         uint16_t prev_rpm = menu.race_rpm;
         while (My_Key_get_event(&key)) {
             MenuAction action;
+            if (key.type == KEY_EVENT_PRESS) status_led_key(key.id);
             if (stop_release_ms || (up && key.id != KEY_UP)) continue;
             action = CarMenu_Key(&menu,key,&car,menu_start);
             if (action == MENU_SAVE_PARAMS) {
@@ -726,6 +772,8 @@ void Car_PIT_Handler(void)
     int32_t l;                                   /* 左轮本周期编码器增量 */
     int32_t r;                                   /* 右轮本周期编码器增量 */
 
+    status_led_tick();
+
     sample_us = control_clock_ready
               ? __HAL_TIM_GET_COUNTER(&control_clock)
               : 0U;
@@ -796,7 +844,13 @@ void Car_PIT_Handler(void)
     }
 
     /* 使用实测周期更新控制器，并把双轮输出应用到电机。 */
-    race_tick(l,r,dt_us);
+    if (dt_us >= CAR_MIN_CONTROL_US && dt_us <= CAR_MAX_CONTROL_US) {
+        race_tick(l,r,dt_us);
+    } else {
+        /* Let the timing fault latch first and never accept a launch on this tick. */
+        CarMenu_Disarm(&menu);
+        My_Key_clear_events();
+    }
     Car_TickDt(&car, l, r, dt_us);
     output(0, car.output[0]);                    /* 应用左轮输出 */
     output(1, car.output[1]);                    /* 应用右轮输出 */
@@ -826,8 +880,16 @@ void Car_PIT_Handler(void)
              n < 64 && NEUQ_FIFO_read_byte(&vision_fifo, &byte) == NEUQ_FIFO_OK;
              n++)
         {
+            uint32_t accepted = vision.accepted_frames;
             /* 只有停车状态才允许接受新的 HELLO 会话。 */
             CarVision_Feed(&vision, byte, now, car.state == CAR_STOP && !finish_pending);
+            if (vision.accepted_frames != accepted) {
+                CarVisionObservation road;
+                uint8_t fresh = CarVision_GetObservation(&vision,now,&road);
+                /* Observe each accepted frame before the next can replace it. */
+                CarMenu_StartCondition(&launch_road,&car,chassis_still,finish_pending,
+                                       fresh && !vision_rx_fault ? &road : NULL,last_race_session);
+            }
         }
     }
 
@@ -1053,6 +1115,8 @@ void Car_Main(void)
     NEUQ_Uart_Enable_RX_Interrupt((UART_DEV_ENUM)CAR_VISION_UART_INDEX, 4);
 #endif
 
+    NEUQ_GPIO_init(CAR_HEARTBEAT_LED_PIN, GPIO_Mode_Output_PushPull, GPIO_Low);
+    NEUQ_GPIO_init(CAR_KEY_LED_PIN, GPIO_Mode_Output_PushPull, GPIO_Low);
     My_Lcd_init();
     gyro_present = NEUQ_MPU6050_init();
     /* Begin accepting commands only after the slow startup operations. */

@@ -201,6 +201,15 @@ void CarVision_Invalidate(CarVision *v)
      * HELLO clears them; a later UART fault must not erase an earlier tile. */
 }
 
+void CarVision_CloseRaceSession(CarVision *v)
+{
+    v->used = 0;
+    v->have_observation = 0;
+    v->session_valid = 0;
+    memset(v->tiles, 0, sizeof v->tiles);
+    /* Retain diagnostics and the sequence watermark for this sender. */
+}
+
 CarVisionCameraStatus CarVision_GetCameraStatus(const CarVision *v, uint32_t now_ms)
 {
     return now_ms - v->camera_status_ms <= CAR_VISION_STATUS_TIMEOUT_MS ?
@@ -280,7 +289,7 @@ static void accept(CarVision *v, uint32_t now, uint8_t allow_hello)
         }
 
         v->have_observation = 0;
-        v->have_sequence = 0;
+        if (v->session != session) v->have_sequence = 0;
         for (i = 0; i < 4; i++)
         {
             v->tiles[i].valid = 0;

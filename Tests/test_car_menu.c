@@ -83,11 +83,38 @@ int main(void)
 {
     Car_Core car;
     CarMenu menu = {0};
+    CarMenuRoadConfirm confirm = {0};
     CarVisionObservation road = {0};
     MenuView view = {0};
     uint8_t board[36] = {0};
     unsigned row, group, item;
     float before;
+    CarMenu_DrawRow(&view, 0, board, 0);
+    assert(strstr(rows[0], "T0000000s"));
+    view.uptime_s = 1U;
+    view.menu.depth = 1U;
+    view.menu.group = MENU_SENSORS;
+    CarMenu_DrawRow(&view, 0, board, 0);
+    assert(strstr(rows[0], "T0000001s"));
+    view.menu.depth = 0U;
+    view.menu.group = MENU_RACE;
+    view.state = CAR_FAULT;
+    view.fault = CAR_TIMING_FAULT;
+    view.timing_fault_us = 20000U;
+    CarMenu_DrawRow(&view, 8, board, 0);
+    assert(strstr(rows[8], "dt=20000us"));
+    view.fault = CAR_RACE_FAULT;
+    for (int why = RACE_FAULT_PERIOD; why <= RACE_FAULT_RED; ++why) {
+        view.race_fault_reason = (RaceFaultReason)why;
+        CarMenu_DrawRow(&view, 8, board, 0);
+        assert(strstr(rows[8], "故障 7"));
+    }
+    view.race_fault_reason = RACE_FAULT_VISION;
+    CarMenu_DrawRow(&view, 8, board, 0);
+    assert(strstr(rows[8], "视觉丢失"));
+    view.state = CAR_STOP;
+    view.fault = 0U;
+
     /* Verify font table is strictly sorted ascending for binary search. */
     assert(MY_LCD_ZH_COUNT > 0U);
     for (item = 1U; item < MY_LCD_ZH_COUNT; ++item) {
@@ -125,27 +152,58 @@ int main(void)
     road.valid_mask = VISION_CURVATURE_VALID;
     road.confidence = 0.9f;
 #if CAR_VISION_ENABLE
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_READY);
+    road.sequence = 65534U;
+    road.received_ms = 10U;
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
+    for (unsigned tick = 0; tick < 4; ++tick)
+        assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
+    road.sequence = 0U; /* Wrap and a non-road business sequence between observations. */
+    road.received_ms = 20U;
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
+    road.sequence = 1U;
+    road.received_ms = 30U;
+    road.element = VISION_ELEMENT_CROSS;
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
+    road.element = VISION_ELEMENT_NONE;
+    for (unsigned i = 1; i <= 3; ++i) {
+        ++road.sequence;
+        road.received_ms += 40U;
+        assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) ==
+               (i == 3 ? START_READY : START_NO_ROAD));
+    }
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_READY);
+    ++road.sequence;
+    road.received_ms += CAR_VISION_MAX_AGE_MS + 1U;
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
+    ++road.sequence;
+    road.received_ms += CAR_VISION_MAX_AGE_MS;
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
+    ++road.sequence;
+    road.received_ms += 10U;
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_READY);
+    road.session = 13U;
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
+    road.session = 12U;
     road.valid_mask |= VISION_CURVATURE_ESTIMATED;
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_NO_ROAD);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
     road.valid_mask = VISION_CURVATURE_VALID;
-    assert(CarMenu_StartCondition(&car,0,0,&road,11) == START_MOVING);
-    assert(CarMenu_StartCondition(&car,1,1,&road,11) == START_RESULT);
-    assert(CarMenu_StartCondition(&car,1,0,NULL,11) == START_NO_VISION);
+    assert(CarMenu_StartCondition(&confirm,&car,0,0,&road,11) == START_MOVING);
+    assert(CarMenu_StartCondition(&confirm,&car,1,1,&road,11) == START_RESULT);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,NULL,11) == START_NO_VISION);
     road.session = 0;
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_NO_VISION);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_VISION);
     road.session = 12;
     road.confidence = NAN;
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_NO_ROAD);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_ROAD);
     road.valid_mask = 0;
-    assert(CarMenu_StartCondition(&car,1,0,&road,12) == START_NEW_SESSION);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,12) == START_NEW_SESSION);
     road.valid_mask = VISION_CURVATURE_VALID;
     road.confidence = 0.9f;
-    assert(CarMenu_StartCondition(&car,1,0,&road,12) == START_NEW_SESSION);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,12) == START_NEW_SESSION);
 #else
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_NO_VISION);
-    assert(CarMenu_StartCondition(&car,0,0,&road,11) == START_MOVING);
-    assert(CarMenu_StartCondition(&car,1,1,&road,11) == START_RESULT);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_NO_VISION);
+    assert(CarMenu_StartCondition(&confirm,&car,0,0,&road,11) == START_MOVING);
+    assert(CarMenu_StartCondition(&confirm,&car,1,1,&road,11) == START_RESULT);
 #endif
 
     /* Race -> Race RPM (4th item in MENU_RACE): fine/coarse edit, BACK discards, OK applies. */
@@ -207,9 +265,14 @@ int main(void)
     assert(press(&menu,&car,KEY_OK,START_NO_VISION) == MENU_IDLE && menu.race_armed == 1U);
     assert(CarMenu_PollArmed(&menu, START_MOVING) == MENU_IDLE && menu.race_armed == 0U);
     assert(CarMenu_PollArmed(&menu, START_READY) == MENU_IDLE);
-    /* Re-arm and wait until Vision turns ON with valid road -> auto-launch! */
+    /* Re-arm and let three distinct normal-road observations trigger auto-launch. */
     assert(press(&menu,&car,KEY_OK,START_NO_VISION) == MENU_IDLE && menu.race_armed == 1U);
-    assert(CarMenu_PollArmed(&menu, START_READY) == MENU_LAUNCH);
+    for (unsigned i = 1; i <= 3; ++i) {
+        ++road.sequence;
+        road.received_ms += 40U;
+        StartCondition start = CarMenu_StartCondition(&confirm,&car,1,0,&road,11);
+        assert(CarMenu_PollArmed(&menu, start) == (i == 3 ? MENU_LAUNCH : MENU_IDLE));
+    }
     assert(menu.race_armed == 0U && menu.item[MENU_RACE] == 1U && CarMenu_GetRaceRpm(&menu) == 120U);
 
     /* Direct launch when Vision is already ON & ready. */
@@ -218,7 +281,7 @@ int main(void)
     assert(menu.item[MENU_RACE] == 1U);
     assert(press(&menu,&car,KEY_OK,START_READY) == MENU_IDLE);
     assert(Car_StartRace(&car));
-    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_STOP_FIRST);
+    assert(CarMenu_StartCondition(&confirm,&car,1,0,&road,11) == START_STOP_FIRST);
     Car_LocalStop(&car);
 #else
     /* Build with CAR_VISION_ENABLE=0: Start race must never arm or launch. */
@@ -318,6 +381,28 @@ int main(void)
     for (row = 0; row < UI_ROWS; ++row) CarMenu_DrawRow(&view, row, board, 0);
     assert(strstr(rows[3], "已关闭"));
     view.vision_disabled = 0;
+#if CAR_VISION_ENABLE
+    view.fresh = 1;
+    view.start = START_NO_ROAD;
+    view.obs.valid_mask = 0;
+    CarMenu_DrawRow(&view,3,board,0);
+    assert(strstr(rows[3],"无有效曲率"));
+    view.obs.valid_mask = VISION_CURVATURE_VALID | VISION_CURVATURE_ESTIMATED;
+    CarMenu_DrawRow(&view,3,board,0);
+    assert(strstr(rows[3],"等待实测曲率"));
+    view.obs.valid_mask = VISION_CURVATURE_VALID;
+    view.obs.confidence = 0.2f;
+    CarMenu_DrawRow(&view,3,board,0);
+    assert(strstr(rows[3],"0.200 < 0.350"));
+    view.obs.confidence = 0.9f;
+    view.obs.element = VISION_ELEMENT_YELLOW;
+    CarMenu_DrawRow(&view,3,board,0);
+    assert(strstr(rows[3],"元素 5"));
+    view.obs.element = VISION_ELEMENT_NONE;
+    view.launch_road_count = 2;
+    CarMenu_DrawRow(&view,3,board,0);
+    assert(strstr(rows[3],"2/3"));
+#endif
 
     /* Sweep Race status across all phases and states. */
     view.menu.group = MENU_RACE;

@@ -146,6 +146,8 @@ void CarVision_Init(CarVision *v);
  * @note 保留会话、最近序号和统计。数独块仅在切换会话或完整初始化时清除。
  */
 void CarVision_Invalidate(CarVision *v);
+/* End a round after stop/result capture. Require another HELLO and fresh road. */
+void CarVision_CloseRaceSession(CarVision *v);
 
 /* Independent of the race session and road detection. */
 CarVisionCameraStatus CarVision_GetCameraStatus(const CarVision *v, uint32_t now_ms);

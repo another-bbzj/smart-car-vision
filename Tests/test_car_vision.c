@@ -151,6 +151,24 @@ int main(void)
     n = make_frame(f,1,3,789,0,data,16);
     feed(&v,f,n,2005U,0);
     assert(CarVision_GetObservation(&v,2005U,&o) && o.valid_mask == data[1]);
+    /* A stopped race closes locally; an unchanged sender can start a clean round. */
+    {
+        uint8_t cells[10] = {0,1,2,3,4,5,6,1,2,3};
+        n=make_frame(f,2,4,789,0,cells,10); feed(&v,f,n,2100,1);
+        assert(CarVision_GetTile(&v,0,2100,&tile));
+        CarVision_CloseRaceSession(&v);
+        assert(!v.session_valid && !CarVision_GetObservation(&v,2100,&o));
+        assert(!CarVision_GetTile(&v,0,2100,&tile));
+        n=make_frame(f,0,0,789,0,NULL,0); feed(&v,f,n,2110,0);
+        assert(!v.session_valid);
+        feed(&v,f,n,2120,1);
+        assert(v.session_valid && !CarVision_GetObservation(&v,2120,&o));
+        n=make_frame(f,1,3,789,0,data,16); feed(&v,f,n,2130,1);
+        assert(!CarVision_GetObservation(&v,2130,&o));
+        n=make_frame(f,1,5,789,0,data,16); feed(&v,f,n,2140,1);
+        assert(CarVision_GetObservation(&v,2140,&o) && o.sequence==5);
+        assert(!CarVision_GetTile(&v,0,2140,&tile));
+    }
     puts("vision interface: all checks passed");
     return 0;
 }

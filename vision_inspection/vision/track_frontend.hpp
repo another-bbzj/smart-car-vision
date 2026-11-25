@@ -112,9 +112,20 @@ inline void findSeed(Observation& out, const FrontendConfig& c) {
     const int margin = std::max(c.seedMargin, c.blueProbe);
     const int minWidth = std::max(3, static_cast<int>(w * c.minRunRatio));
     if (w <= 2 * margin || h <= 2 * c.seedMargin) return;
-    for (int y = h - 1 - c.seedMargin; y >= static_cast<int>(h * c.seedTopRatio); --y) {
+    const int nearTop = static_cast<int>(h * c.seedTopRatio);
+    // A seam on the optical axis may leave an unbroken white strip just beside it.
+    // Keep the same column across rows: separate white patches cannot bridge a gap.
+    const int offset = std::max(1, c.blueProbe / 2);
+    const int probes[] = {w / 2 - offset, w / 2, w / 2 + offset};
+    bool connected[] = {true, true, true};
+    for (int y = h - 1 - c.seedMargin; y >= std::min(nearTop, h / 3); --y) {
         const uchar* row = out.roadMask.ptr<uchar>(y);
         const uchar* blue = out.blueMask.ptr<uchar>(y);
+        for (int i = 0; i < 3; ++i) {
+            const int x = probes[i];
+            connected[i] = connected[i] && row[x - 1] && row[x] && row[x + 1];
+        }
+        if (y < nearTop && !connected[0] && !connected[1] && !connected[2]) break;
         double bestScore = -1e9;
         int bestL = -1, bestR = -1;
         double bestSupport = 0;
@@ -123,6 +134,12 @@ inline void findSeed(Observation& out, const FrontendConfig& c) {
             const int l = x;
             while (x < w && row[x]) ++x;
             const int r = x - 1;
+            if (y < nearTop) {
+                bool reachesNear = false;
+                for (int i = 0; i < 3; ++i)
+                    if (connected[i] && l <= probes[i] - 1 && probes[i] + 1 <= r) reachesNear = true;
+                if (!reachesNear) continue;
+            }
             if (r - l + 1 < minWidth || l < margin || r >= w - margin) continue;
             int lb = 0, rb = 0;
             for (int k = 1; k <= c.blueProbe; ++k) {

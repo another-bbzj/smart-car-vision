@@ -18,7 +18,7 @@ static const char *const conditions[] = {
     "正在求解数独结果",
     "等待视觉功能开启",
     "等待识别有效赛道",
-    "请重启视觉(--hello)"
+    "等待视觉 HELLO"
 };
 static const char *const phases[] = {"巡线", "断路", "绕障", "红障停", "完赛", "故障"};
 enum { FB_NONE, FB_APPLIED, FB_STOP, FB_INVALID };
@@ -76,7 +76,7 @@ void CarMenu_Disarm(CarMenu *m)
     if (m) m->race_armed = 0U;
 }
 
-StartCondition CarMenu_StartCondition(const Car_Core *car, uint8_t still, uint8_t pending,
+static StartCondition start_condition(const Car_Core *car, uint8_t still, uint8_t pending,
                                       const CarVisionObservation *road, uint32_t previous_session)
 {
     if (car->state != CAR_STOP) return START_STOP_FIRST;
@@ -86,9 +86,40 @@ StartCondition CarMenu_StartCondition(const Car_Core *car, uint8_t still, uint8_
     if (!road || road->session == 0U) return START_NO_VISION;
     if (road->session == previous_session) return START_NEW_SESSION;
     if (!(road->valid_mask & VISION_CURVATURE_VALID) ||
-        (road->valid_mask & VISION_CURVATURE_ESTIMATED) || !(road->confidence >= 0.35f))
+        (road->valid_mask & VISION_CURVATURE_ESTIMATED) || !(road->confidence >= 0.35f) ||
+        road->element != VISION_ELEMENT_NONE)
         return START_NO_ROAD;
     return START_READY;
+}
+
+StartCondition CarMenu_StartCondition(CarMenuRoadConfirm *confirm, const Car_Core *car,
+                                      uint8_t still, uint8_t pending,
+                                      const CarVisionObservation *road, uint32_t previous_session)
+{
+    const unsigned required_frames = 3U;
+    StartCondition condition = start_condition(car,still,pending,road,previous_session);
+    if (condition != START_READY) {
+        confirm->count = 0U;
+        return condition;
+    }
+
+    if (confirm->session != road->session ||
+        road->received_ms - confirm->received_ms > CAR_VISION_MAX_AGE_MS) {
+        confirm->count = 0U;
+    }
+    if (confirm->count) {
+        uint16_t delta = (uint16_t)(road->sequence - confirm->sequence);
+        if (delta == 0U) return confirm->count >= required_frames ? START_READY : START_NO_ROAD;
+        if (delta >= 0x8000U) {
+            confirm->count = 0U;
+            return START_NO_ROAD;
+        }
+    }
+    confirm->session = road->session;
+    confirm->sequence = road->sequence;
+    confirm->received_ms = road->received_ms;
+    if (confirm->count < required_frames) ++confirm->count;
+    return confirm->count >= required_frames ? START_READY : START_NO_ROAD;
 }
 
 MenuAction CarMenu_PollArmed(CarMenu *m, StartCondition start)
@@ -238,8 +269,9 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
     UI_Style_Enum style = UI_STYLE_NORMAL;
     char s[UI_LINE_BYTES] = "";
     if (row == 0U) {
+        const char *title = m->depth == 0U ? "智能车菜单" : groups[group];
         style = UI_STYLE_TITLE;
-        snprintf(s, sizeof s, "%s", m->depth == 0U ? "智能车菜单" : groups[group]);
+        snprintf(s, sizeof s, "%s  T%07lus", title, (unsigned long)v->uptime_s);
     } else if (row == 9U) {
         style = UI_STYLE_HINT;
         if (v->state != CAR_STOP) {
@@ -258,7 +290,15 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
             snprintf(s, sizeof s, "PE9: 返回");
         }
     } else if (row == 8U) {
-        if (v->state == CAR_STOP && m->race_armed) {
+        if (v->state == CAR_FAULT && v->fault == CAR_TIMING_FAULT) {
+            style = UI_STYLE_WARN;
+            snprintf(s, sizeof s, "故障 5  dt=%luus", (unsigned long)v->timing_fault_us);
+        } else if (v->state == CAR_FAULT && v->fault == CAR_RACE_FAULT) {
+            static const char *const reasons[] = {"", "PIT dt", "视觉丢失", "断路超限", "绕障超限", "红障超时"};
+            const unsigned why = (unsigned)v->race_fault_reason;
+            style = UI_STYLE_WARN;
+            snprintf(s, sizeof s, "故障 7  %s", why < sizeof reasons / sizeof reasons[0] ? reasons[why] : "");
+        } else if (v->state == CAR_STOP && m->race_armed) {
             style = UI_STYLE_WARN;
             snprintf(s, sizeof s, "待视觉开启 %3uRPM 故障%u", rpm, (unsigned)v->fault);
         } else {
@@ -313,10 +353,19 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
                          v->session_valid ? "视觉: 数据过期(无新帧)" : "视觉: 未开启(等--hello)");
             } else if (v->start == START_NEW_SESSION) {
                 style = UI_STYLE_WARN;
-                snprintf(s, sizeof s, "视觉: 旧会话(需--hello)");
+                snprintf(s, sizeof s, "视觉: 等待 HELLO");
             } else if (v->start == START_NO_ROAD) {
                 style = UI_STYLE_WARN;
-                snprintf(s, sizeof s, "视觉: 已开启(等识别赛道)");
+                if (!(v->obs.valid_mask & VISION_CURVATURE_VALID))
+                    snprintf(s, sizeof s, "无有效曲率  元素 %u", (unsigned)v->obs.element);
+                else if (v->obs.valid_mask & VISION_CURVATURE_ESTIMATED)
+                    snprintf(s, sizeof s, "等待实测曲率");
+                else if (!(v->obs.confidence >= 0.35f))
+                    snprintf(s, sizeof s, "置信度 %.3f < 0.350", (double)v->obs.confidence);
+                else if (v->obs.element != VISION_ELEMENT_NONE)
+                    snprintf(s, sizeof s, "元素 %u  等待元素 0", (unsigned)v->obs.element);
+                else
+                    snprintf(s, sizeof s, "有效赛道帧 %u/3", (unsigned)v->launch_road_count);
             } else {
                 float conf = isfinite(v->obs.confidence) ? v->obs.confidence : 0.0f;
                 if (conf < 0.0f) conf = 0.0f;
@@ -342,7 +391,7 @@ void CarMenu_DrawRow(const MenuView *v, unsigned row, const uint8_t board[36], u
             } else if (vision_en && (v->start == START_NO_VISION ||
                        v->start == START_NO_ROAD || v->start == START_NEW_SESSION)) {
                 style = UI_STYLE_EDIT;
-                snprintf(s, sizeof s, "OK: 预备(等视觉开启开跑)");
+                snprintf(s, sizeof s, "OK: 预备(就绪自动开跑)");
             }
         } else if (row == 6U) {
             if (m->feedback == FB_STOP) {

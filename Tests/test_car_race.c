@@ -55,7 +55,33 @@ static void two_laps_rpm(float target_rpm) {
     }
 }
 
+static void yellow_requires_consecutive_frames(void) {
+    CarRace race;
+    CarVisionObservation o = {0};
+    Race_StartWithRpm(&race, 60);
+    o.valid_mask = VISION_CURVATURE_VALID | VISION_DISTANCE_VALID;
+    o.confidence = 0.646f;
+    o.curvature_inv_m = 1.690f;
+    o.distance_m = 0.51f;
+    o.element = VISION_ELEMENT_YELLOW;
+    o.sequence = 39;
+    for (unsigned t = 0; t < 60; t += 5) {
+        RaceDrive cmd = Race_Step(&race, &o, 0, 0, 0.005f, 0, 0, 1, t);
+        assert(race.phase == RACE_TRACK && cmd.rpm[0] > 0 && cmd.rpm[1] > 0);
+    }
+    o.element = VISION_ELEMENT_NONE;
+    ++o.sequence;
+    Race_Step(&race, &o, 0, 0, 0.005f, 0, 0, 1, 60);
+    o.element = VISION_ELEMENT_YELLOW;
+    for (unsigned i = 0; i < 3; ++i) {
+        ++o.sequence;
+        Race_Step(&race, &o, 0, 0, 0.005f, 0, 0, 1, 100 + i * 40);
+        assert(race.phase == (i < 2 ? RACE_TRACK : RACE_BYPASS));
+    }
+}
+
 int main(void) {
+    yellow_requires_consecutive_frames();
     CarRace r;
     RaceDrive cmd;
     Car_Core car;
@@ -114,10 +140,28 @@ int main(void) {
     assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[0]>0);
     cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,820);
     assert(r.phase==RACE_FAULT && cmd.rpm[0]==0 && cmd.rpm[1]==0);
+    assert(r.fault_reason == RACE_FAULT_VISION);
     Race_Start(&r);
     Race_Step(&r,NULL,0,0,0.005f,0,0,1,5000);
     cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,5700);
     assert(r.phase==RACE_FAULT && cmd.rpm[0]==0 && cmd.rpm[1]==0);
+
+    Race_Start(&r);
+    Race_Step(&r,NULL,0,0,0.02f,0,0,1,10);
+    assert(r.fault_reason == RACE_FAULT_PERIOD);
+    Race_Start(&r);
+    r.phase = RACE_GAP;
+    Race_Step(&r,NULL,2,2,0.005f,0,0,0,10);
+    assert(r.fault_reason == RACE_FAULT_GAP);
+    Race_Start(&r);
+    r.phase = RACE_BYPASS;
+    r.yaw = 1.6f;
+    Race_Step(&r,NULL,0,0,0.005f,0,0,0,10);
+    assert(r.fault_reason == RACE_FAULT_BYPASS);
+    Race_Start(&r);
+    r.phase = RACE_RED;
+    Race_Step(&r,NULL,0,0,0.005f,0,0,0,12001);
+    assert(r.fault_reason == RACE_FAULT_RED);
 
     /* Inferred geometry may steer briefly at hold speed, but cannot delay stopping. */
     Race_Start(&r);

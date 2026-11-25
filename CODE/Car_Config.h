@@ -9,6 +9,9 @@
 /* 临时诊断：1 = 不做任何外设初始化，只用忙等闪核心板 LED2(PA8)，
  * 用于确证独立上电时 MCU 是否在执行本固件。测完改回 0。 */
 #define CAR_LED_TEST            0
+/* Competition motherboard LEDs are active high. Keep PA8 on I2C3 SCL. */
+#define CAR_HEARTBEAT_LED_PIN   PD8  /* LED3 / D8 */
+#define CAR_KEY_LED_PIN         PD10 /* LED4 / D10 */
 /* 香橙派视觉串口：UART4，PC10 TX / PC11 RX。
  * 与蓝牙分属不同串口，可同时启用。 */
 #define CAR_VISION_UART_INDEX   3

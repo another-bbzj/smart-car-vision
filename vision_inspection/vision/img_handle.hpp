@@ -301,8 +301,11 @@ inline FrameResult img_handle(const cv::Mat& img, bool saveBirdImage = false,
     // 路障单独处理，不混入白色赛道掩膜：先按颜色和形状找候选，再跨帧关联。
     // 输出坐标仍是图像像素；此处不根据颜色触发绕行或停车动作。
     result.obstacles = obstacleStabilizer.update(obstacle::detect(img));
+    const bool haveRoadContext = result.seedFound || singleSeed;
+    const bool reportObstacle = haveRoadContext && result.obstacles.hasPrimary &&
+                                result.obstacles.primary.stable;
     // 将稳定主目标映射为控制仓库定义的 TYPE=1 元素码；未标定字段保持无效。
-    if (result.obstacles.hasPrimary && result.obstacles.primary.stable) {
+    if (reportObstacle) {
         const auto& target = result.obstacles.primary;
         const auto color = target.color == obstacle::Color::Green ? vision_link::Element::GreenObstacle :
             target.color == obstacle::Color::Yellow ? vision_link::Element::YellowObstacle :
@@ -319,7 +322,7 @@ inline FrameResult img_handle(const cv::Mat& img, bool saveBirdImage = false,
         taskInput.ackEventId = options.obstacleAckEventId;
         taskInput.ack = options.obstacleAck;
         for (const auto& candidate : result.obstacles.candidates) {
-            if (candidate.stable) taskInput.targets.push_back(candidate);
+            if (haveRoadContext && candidate.stable) taskInput.targets.push_back(candidate);
         }
         result.obstacleEvent = obstacleTaskMachine.update(taskInput);
     } else {
@@ -461,25 +464,18 @@ if (hasPreview) {
     if (state == bird::CrossState::None && ringState == bird::RingState::None) {
         float xLeft=0, xRight=0;
         const float y=vehiclePoint.y-lookahead;
-        auto intersect=[y](const auto& edge,float& x) {
-            for (size_t i=1;i<edge.size();++i) {
-                const auto& a=edge[i-1]; const auto& b=edge[i];
-                if (a.y>=y && b.y<y) {
-                    x=a.x+(b.x-a.x)*(y-a.y)/(b.y-a.y);
-                    return true;
-                }
-            }
-            return false;
-        };
-        const bool hasLeft = intersect(sampleL,xLeft);
-        const bool hasRight = intersect(sampleR,xRight);
+        const bool hasLeft = bird::sampleEdgeAtY(sampleL,y,xLeft);
+        const bool hasRight = bird::sampleEdgeAtY(sampleR,y,xRight);
         const float width = (xRight - xLeft) * config::kMetersPerPixel;
         const bool measured = hasLeft && hasRight && width > 0.22f && width < 0.72f;
         if (measured) {
             previewPoint = {(xLeft + xRight) * 0.5f, y};
-            if (hsv && result.seedFound && !inGap)
+            if (hsv && result.seedFound && !inGap) {
                 laneMemory = {options.sourceTimeMs, xRight - xLeft, previewPoint.x,
                               previewPoint.x, seedY, leftX, rightX, 0};
+                previewPoint = bird::straightRoadPreview(sampleL, sampleR, vehiclePoint,
+                                                        previewPoint, xRight - xLeft);
+            }
         } else if (canEstimate && (hasLeft != hasRight) &&
                    (singleSeed || result.seedFound) && (hasLeft ? sampleL.size() : sampleR.size()) >= 8) {
             const float inferredCenter = hasLeft ? xLeft + laneMemory.width * 0.5f :
@@ -551,7 +547,7 @@ if (hasPreview) {
             wire.confidence = 450;
         }
     }
-    if (result.obstacles.hasPrimary && result.obstacles.primary.stable) {
+    if (reportObstacle) {
         std::vector<cv::Point2f> ground;
         bird::transformPoints({cv::Point(result.obstacles.primary.center)},ground);
         if (!ground.empty()) {

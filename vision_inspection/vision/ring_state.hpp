@@ -66,7 +66,8 @@ inline bool detectLeftRingBegin(
     cv::Point2f otherCorner;
     const bool leftCorner = findCorner(leftLine, corner, angle);
     const bool rightCorner = findCorner(rightLine, otherCorner, angle);
-    return leftCorner && !rightCorner && isLongStraight(rightLine);
+    return leftCorner && !rightCorner && isLongStraight(rightLine) &&
+           !hasStraightCorridor(leftLine, rightLine);
 }
 
 inline bool detectRightRingBegin(
@@ -78,7 +79,8 @@ inline bool detectRightRingBegin(
     cv::Point2f otherCorner;
     const bool rightCorner = findCorner(rightLine, corner, angle);
     const bool leftCorner = findCorner(leftLine, otherCorner, angle);
-    return rightCorner && !leftCorner && isLongStraight(leftLine);
+    return rightCorner && !leftCorner && isLongStraight(leftLine) &&
+           !hasStraightCorridor(leftLine, rightLine);
 }
 
 // 环岛通过阶段机：入口确认 -> 入环 -> 环内运行 -> 出环 -> 直道恢复后退出。
@@ -100,8 +102,7 @@ struct RingStateMachine {
         // A sustained ordinary corridor can disprove an early entry, before any confirmed turn.
         const bool entering = state == RingState::LeftBegin || state == RingState::RightBegin ||
                               state == RingState::LeftIn || state == RingState::RightIn;
-        const bool straight = entering && !leftCornerFound && !rightCornerFound &&
-                              hasStraightCorridor(leftLine, rightLine);
+        const bool straight = entering && hasStraightCorridor(leftLine, rightLine);
         if (straight) {
             // A straight corridor can be diagonal when the car is angled.
             // Its outer edge alone is not evidence of turning into a ring.

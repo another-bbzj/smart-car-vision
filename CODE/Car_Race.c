@@ -56,6 +56,7 @@ static void enter(CarRace *r, RacePhase phase, uint32_t now) {
     r->entered_ms = now;
     r->last_road_ms = now;   /* hold timer restarts for every blind phase */
     r->clear_frames = 0;
+    r->yellow_frames = 0;
 }
 
 RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
@@ -71,6 +72,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
              ? RACE_RPM_TO_MPS(Race_ClampRpm(r->target_rpm)) : 0.55f;
     /* A bad control period still faults: it means the 5 ms loop itself failed. */
     if (!(dt >= 0.001f && dt <= 0.0151f)) {
+        r->fault_reason = RACE_FAULT_PERIOD;
         r->phase = RACE_FAULT;
         return stop;
     }
@@ -105,6 +107,17 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     }
     r->degraded = 0;   /* warning applies only to ordinary line following */
     if (r->phase == RACE_TRACK) {
+        const int action_ready = measured_road && (o->valid_mask & VISION_DISTANCE_VALID) &&
+                                 o->element != r->held_element && o->confidence >= 0.50f;
+        const int yellow = action_ready && o->element == VISION_ELEMENT_YELLOW && o->distance_m <= 0.80f;
+        if (!yellow) {
+            r->yellow_frames = 0;
+        } else if (new_frame) {
+            if (now - r->last_yellow_ms > CAR_VISION_MAX_AGE_MS) r->yellow_frames = 0;
+            r->last_yellow_ms = now;
+            ++r->yellow_frames;
+        }
+
         along = r->distance - (r->lap - 1) * RACE_LAP_M;
         in_window = RACE_GAP_ENTRY_M <= 0 || fabsf(along - RACE_GAP_ENTRY_M) < 1.0f;
         if (!road) {
@@ -117,9 +130,8 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
                 enter(r, RACE_GAP, now);
                 r->last_gap = r->distance;
             }
-        } else if (measured_road && (o->valid_mask & VISION_DISTANCE_VALID) &&
-                   o->element != r->held_element && o->confidence >= 0.50f) {
-            if (o->element == VISION_ELEMENT_YELLOW && o->distance_m <= 0.80f) {
+        } else if (action_ready) {
+            if (yellow && r->yellow_frames >= RACE_YELLOW_CONFIRM_FRAMES) {
                 enter(r, RACE_BYPASS, now);
                 r->obstacle_m = fmaxf(0.08f, o->distance_m);
                 r->goal_m = r->obstacle_m + 0.42f;
@@ -142,7 +154,10 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
             r->phase = RACE_TRACK;
             r->last_road_ms = now;
         }
-        if (now - r->entered_ms > 12000U) r->phase = RACE_FAULT;
+        if (now - r->entered_ms > 12000U) {
+            r->fault_reason = RACE_FAULT_RED;
+            r->phase = RACE_FAULT;
+        }
         return stop;
     }
     heading = r->yaw - r->entry_yaw;
@@ -150,6 +165,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
         float v_gap = fminf(0.22f, v_target);
         uint32_t gap_timeout_ms = (uint32_t)fmaxf(12500.0f, 2200.0f / fmaxf(v_gap, 0.05f));
         if (s > 1.95f || now - r->entered_ms > gap_timeout_ms) {
+            r->fault_reason = RACE_FAULT_GAP;
             r->phase = RACE_FAULT;
             return stop;
         }
@@ -171,6 +187,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
         r->goal_m -= ds * cosf(heading);
         along = r->obstacle_m + 0.42f - r->goal_m;
         if (now - r->entered_ms > bypass_timeout_ms || fabsf(heading) > 1.55f || r->goal_m < -0.25f) {
+            r->fault_reason = RACE_FAULT_BYPASS;
             r->phase = RACE_FAULT;
             return stop;
         }
@@ -189,6 +206,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     r->degraded = r->phase == RACE_TRACK && !measured_road;
 #if RACE_VISION_LOST_STOP_MS > 0
     if (r->degraded && now - r->last_road_ms >= RACE_VISION_LOST_STOP_MS) {
+        r->fault_reason = RACE_FAULT_VISION;
         r->phase = RACE_FAULT;
         return stop;
     }

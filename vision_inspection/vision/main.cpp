@@ -140,6 +140,7 @@ int main(int argc, char** argv) {
         const auto start = Clock::now();
         double processTotalMs = 0;
         auto nextHello = Clock::time_point::min();
+        bool helloSent = false;
         bool cameraWarning = false;
         // 阶段 3：逐帧处理。记录来源时间和处理耗时；CSV 对每帧留档，
         // 图片按 saveEvery 抽样，减少长视频产生的磁盘占用。
@@ -182,10 +183,11 @@ int main(int argc, char** argv) {
                 sourceMs = capture.get(cv::CAP_PROP_POS_MSEC);
             }
             const auto frameReceived = Clock::now();
-            if (visionSender && args.sendHello && frameReceived >= nextHello) {
-                visionSender->sendHello();
+            if (visionSender && args.sendHello && frameReceived >= nextHello && visionSender->sendHello()) {
+                helloSent = true;
                 nextHello = frameReceived + std::chrono::seconds(1);
             }
+            const bool canSendBusiness = visionSender && (!args.sendHello || helloSent);
             const auto t0 = frameReceived;
             options.sourceTimeMs = sourceMs;
             const auto result = img_handle(current, false, options);
@@ -193,15 +195,14 @@ int main(int argc, char** argv) {
             const double ms = std::chrono::duration<double, std::milli>(frameReady - t0).count();
             processTotalMs += ms;
             valid += result.pursuit.valid;
-            if (visionSender) {
+            if (canSendBusiness) {
                 // 这是当前进程可测的采集后年龄；不包含相机曝光前和 F407 接收队列延迟。
                 if (ms < 200) visionSender->sendTrack(static_cast<uint16_t>(std::ceil(ms)), result.wireObservation);
             }
             if (frames % 2 == 0) {
                 for (const auto& tile:tileReader.readAll(current)) {
                     const auto age = std::chrono::duration<double,std::milli>(Clock::now()-frameReceived).count();
-                    const bool sent = visionSender && age <= 200;
-                    if (sent)
+                    const bool sent = canSendBusiness && age <= 200 &&
                         visionSender->sendTile(static_cast<uint16_t>(std::ceil(age)),tile.index,tile.cells);
                     if (sudokuCsv.is_open()) {
                         sudokuCsv << frames << ',' << unsigned(tile.index);

@@ -803,6 +803,7 @@ void Car_TickDt(Car_Core *c, int32_t left_count, int32_t right_count,
     /* 周期越界时停止控制，避免用异常采样间隔计算速度和积分。 */
     if (dt_us < CAR_MIN_CONTROL_US || dt_us > CAR_MAX_CONTROL_US)
     {
+        if (c->state != CAR_FAULT) c->timing_fault_us = dt_us;
         Car_Fault(c, CAR_TIMING_FAULT);
         return;
     }
