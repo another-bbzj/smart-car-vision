@@ -97,23 +97,42 @@ int main(void) {
     /* A missing/stale link must hold the last curvature and keep driving. */
     cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,5);
     assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[0]>0 && cmd.rpm[1]>=0);
-    /* Even a prolonged outage must not fault the race; only the warning stays. */
-    for (unsigned i=0;i<400;++i) {
-        cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,20U+i*5U);
-        assert(r.phase==RACE_TRACK && r.degraded);
-    }
-    /* A fresh frame that found no road is the same hold, not a fault. */
+    /* A fresh frame that found no road still allows a short hold. */
     o.valid_mask=0;
     ++o.sequence;
-    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,2500);
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,100);
     assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[0]>0);
     /* The next valid curvature frame clears the warning. */
     o.valid_mask=VISION_CURVATURE_VALID;
     o.curvature_inv_m=0;
     o.confidence=1;
     ++o.sequence;
-    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,2505);
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,120);
     assert(r.phase==RACE_TRACK && !r.degraded && cmd.rpm[0]>0);
+
+    cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,815);
+    assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[0]>0);
+    cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,820);
+    assert(r.phase==RACE_FAULT && cmd.rpm[0]==0 && cmd.rpm[1]==0);
+    Race_Start(&r);
+    Race_Step(&r,NULL,0,0,0.005f,0,0,1,5000);
+    cmd=Race_Step(&r,NULL,0,0,0.005f,0,0,1,5700);
+    assert(r.phase==RACE_FAULT && cmd.rpm[0]==0 && cmd.rpm[1]==0);
+
+    /* Inferred geometry may steer briefly at hold speed, but cannot delay stopping. */
+    Race_Start(&r);
+    Race_Step(&r,&o,0,0,0.005f,0,0,1,1000);
+    r.straight_m = 0.12f;
+    o.valid_mask |= VISION_CURVATURE_ESTIMATED;
+    o.curvature_inv_m = 2;
+    ++o.sequence;
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,1200);
+    assert(r.phase==RACE_TRACK && r.degraded && cmd.rpm[1]>cmd.rpm[0]);
+    assert(r.straight_m == 0.12f);
+    assert(RACE_RPM_TO_MPS((cmd.rpm[0]+cmd.rpm[1])*0.5f)<=RACE_VISION_HOLD_SPEED_MPS+0.001f);
+    ++o.sequence;
+    cmd=Race_Step(&r,&o,0,0,0.005f,0,0,1,1700);
+    assert(r.phase==RACE_FAULT && cmd.rpm[0]==0 && cmd.rpm[1]==0);
 
     /* Custom target RPM: straight-line & blind phases respect configured RPM ceiling. */
     Race_StartWithRpm(&r, 40.0f);
@@ -126,6 +145,21 @@ int main(void) {
     o.valid_mask = 0; o.element = VISION_ELEMENT_GAP; ++o.sequence;
     cmd = Race_Step(&r, &o, 0, 0, 0.005f, 0, 0, 0, 15);
     assert(r.phase == RACE_GAP && cmd.rpm[0] <= 40.1f && cmd.rpm[1] <= 40.1f);
+    cmd = Race_Step(&r, NULL, 1.35f, 1.35f, 0.005f, 0, 0, 0, 7300);
+    assert(r.phase == RACE_GAP && cmd.rpm[0] > 0 && cmd.rpm[1] > 0);
+    o.valid_mask = VISION_CURVATURE_VALID | VISION_CURVATURE_ESTIMATED;
+    o.element = VISION_ELEMENT_NONE;
+    for (unsigned i=0;i<4;++i) {
+        ++o.sequence;
+        Race_Step(&r,&o,0,0,0.005f,0,0,0,7305+i*5);
+        assert(r.phase == RACE_GAP && r.clear_frames == 0);
+    }
+    o.valid_mask = VISION_CURVATURE_VALID;
+    for (unsigned i=0;i<3;++i) {
+        ++o.sequence;
+        Race_Step(&r,&o,0,0,0.005f,0,0,0,7330+i*5);
+        assert(r.phase == (i < 2 ? RACE_GAP : RACE_TRACK));
+    }
     /* High RPM (240 rpm) reaches 240 rpm on straight. */
     Race_StartWithRpm(&r, 240.0f);
     o.valid_mask = VISION_CURVATURE_VALID; o.curvature_inv_m = 0; o.confidence = 1;

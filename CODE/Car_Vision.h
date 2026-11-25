@@ -46,7 +46,8 @@ enum
     VISION_LATERAL_VALID = 1,   /* 横向偏差有效 */
     VISION_HEADING_VALID = 2,   /* 航向角有效 */
     VISION_CURVATURE_VALID = 4, /* 曲率有效 */
-    VISION_DISTANCE_VALID = 8   /* 距离有效 */
+    VISION_DISTANCE_VALID = 8,  /* 距离有效 */
+    VISION_CURVATURE_ESTIMATED = 16 /* 单边补线，不能用于发车或确认接回赛道 */
 };
 
 /*

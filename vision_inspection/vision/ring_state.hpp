@@ -38,6 +38,24 @@ inline bool isLongStraight(const std::vector<cv::Point2f>& line)
 
     return count >= 20 && angleSum / count <= 12.f && sharpCount <= count / 5;
 }
+
+inline bool hasStraightCorridor(const std::vector<cv::Point2f>& left,
+                               const std::vector<cv::Point2f>& right)
+{
+    if (!isLongStraight(left) || !isLongStraight(right)) return false;
+
+    const auto leftSpan = left[20] - left.front();
+    const auto rightSpan = right[20] - right.front();
+    if (leftSpan.y >= -60.f || rightSpan.y >= -60.f ||
+        std::abs(leftSpan.x / leftSpan.y - rightSpan.x / rightSpan.y) > 0.16f)
+        return false;
+
+    const auto across = cv::Point2f(-leftSpan.y, leftSpan.x) *
+                        (config::kMetersPerPixel / static_cast<float>(cv::norm(leftSpan)));
+    const float nearWidth = (right.front() - left.front()).dot(across);
+    const float farWidth = (right[20] - left[20]).dot(across);
+    return nearWidth > 0.22f && nearWidth < 0.72f && std::abs(farWidth - nearWidth) < 0.06f;
+}
 // 入口识别阶段：一侧出现明显角点、另一侧保持长直线时，提出对应环岛候选。
 inline bool detectLeftRingBegin(
     const std::vector<cv::Point2f>& leftLine,
@@ -72,11 +90,26 @@ struct RingStateMachine {
     int outFrames = 0;
     int entryFrames = 0;
     int entrySide = 0;
+    int straightFrames = 0;
     RingState update(bool leftBegin, bool rightBegin, bool leftCornerFound, bool rightCornerFound,
     const std::vector<cv::Point2f>& leftLine, const std::vector<cv::Point2f>& rightLine)
     {
         const std::size_t leftCount = leftLine.size(), rightCount = rightLine.size();
         const bool leftLost = leftCount < 20, rightLost = rightCount < 20;
+
+        // A sustained ordinary corridor can disprove an early entry, before any confirmed turn.
+        const bool entering = state == RingState::LeftBegin || state == RingState::RightBegin ||
+                              state == RingState::LeftIn || state == RingState::RightIn;
+        const bool straight = entering && !leftCornerFound && !rightCornerFound &&
+                              hasStraightCorridor(leftLine, rightLine);
+        if (straight) {
+            // A straight corridor can be diagonal when the car is angled.
+            // Its outer edge alone is not evidence of turning into a ring.
+            lostFrames = recoveredFrames = turnFrames = 0;
+            if (++straightFrames >= 6) *this = RingStateMachine{};
+            return state;
+        }
+        straightFrames = 0;
 
         // 点序应从近到远；比较近端约 50 像素弧长处的横向变化。
         const bool rightBendsLeft = rightCount > 10 &&

@@ -144,6 +144,50 @@ inline void findSeed(Observation& out, const FrontendConfig& c) {
     }
 }
 
+struct SingleEdgeSeed {
+    int x = -1, y = -1;
+    int side = 0; // +1 left edge, -1 right edge
+};
+
+inline SingleEdgeSeed findSingleEdgeSeed(const cv::Mat& roadMask, const cv::Mat& blueMask,
+                                         const FrontendConfig& c, int priorY, int priorLeft, int priorRight) {
+    SingleEdgeSeed best;
+    constexpr int rowTolerance = 36;
+    constexpr int columnTolerance = 64;
+    int bestScore = 3 * columnTolerance;
+    const int margin = std::max(c.seedMargin, c.blueProbe);
+    const int minWidth = std::max(3, static_cast<int>(roadMask.cols * c.minRunRatio));
+    const int firstRow = std::max(priorY - rowTolerance, static_cast<int>(roadMask.rows * c.seedTopRatio));
+    const int lastRow = std::min(priorY + rowTolerance, roadMask.rows - 1 - c.seedMargin);
+    for (int y = firstRow; y <= lastRow; ++y) {
+        const uchar* road = roadMask.ptr<uchar>(y);
+        const uchar* blue = blueMask.ptr<uchar>(y);
+        for (int x = 0; x < roadMask.cols;) {
+            if (!road[x]) { ++x; continue; }
+            const int left = x;
+            while (x < roadMask.cols && road[x]) ++x;
+            const int right = x - 1;
+            if (right - left + 1 < minWidth) continue;
+            int leftBlue = 0, rightBlue = 0;
+            for (int k = 1; k <= c.blueProbe; ++k) {
+                leftBlue += left >= margin && blue[left - k] != 0;
+                rightBlue += right < roadMask.cols - margin && blue[right + k] != 0;
+            }
+            const bool hasLeft = leftBlue >= c.blueProbe * c.minBlueRatio;
+            const bool hasRight = rightBlue >= c.blueProbe * c.minBlueRatio;
+            if (hasLeft == hasRight) continue;
+            const int edge = hasLeft ? left : right;
+            const int delta = std::abs(edge - (hasLeft ? priorLeft : priorRight));
+            const int score = delta + 2 * std::abs(y - priorY);
+            if (delta <= columnTolerance && score < bestScore) {
+                best = {edge, y, hasLeft ? 1 : -1};
+                bestScore = score;
+            }
+        }
+    }
+    return best;
+}
+
 // 阶段 5：把前端步骤串成单帧处理：BGR 转 HSV -> 白色候选/蓝底掩膜
 // -> 形态学小修补 -> 强制排除蓝底 -> 起点搜索。返回结果供边线跟踪使用。
 inline Observation segment(const cv::Mat& bgr, const FrontendConfig& c) {

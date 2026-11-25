@@ -65,7 +65,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     float ds = 0.5f * (dl + dr);
     float dyaw = (dr - dl) / RACE_TRACK_M;
     float s, curve, speed, heading, target, error, along, v_target;
-    int road, new_frame, in_window;
+    int road, measured_road, new_frame, in_window;
     if (r->phase == RACE_FINISHED || r->phase == RACE_FAULT) return stop;
     v_target = (isfinite(r->target_rpm) && r->target_rpm > 0.0f)
              ? RACE_RPM_TO_MPS(Race_ClampRpm(r->target_rpm)) : 0.55f;
@@ -82,21 +82,24 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
         r->phase = RACE_FINISHED;
         return stop;
     }
-    /* A missing or stale observation no longer faults the race. Keep the most
-     * recent accepted curvature so the car can bridge short vision dropouts;
-     * only a nonzero RACE_VISION_LOST_STOP_MS turns prolonged loss into a stop. */
+    if (!r->have_step_time) {
+        r->have_step_time = 1;
+        r->last_road_ms = now;
+    }
     new_frame = 0;
     road = 0;
+    measured_road = 0;
     if (o) {
         new_frame = !r->have_sequence || o->sequence != r->last_sequence;
         r->last_sequence = o->sequence;
         r->have_sequence = 1;
         road = (o->valid_mask & VISION_CURVATURE_VALID) && o->confidence >= 0.35f;
-        if (road) {
+        measured_road = road && !(o->valid_mask & VISION_CURVATURE_ESTIMATED);
+        if (measured_road || (road && r->phase == RACE_TRACK)) {
             r->last_curve = limit(o->curvature_inv_m, 15.0f);
-            r->last_road_ms = now;
-            r->have_curve = 1;
         }
+        if (measured_road) r->last_measured_curve = r->last_curve;
+        if (measured_road && new_frame) r->last_road_ms = now;
         if (new_frame && o->element != r->held_element &&
             r->distance - r->last_action > 0.8f) r->held_element = 0;
     }
@@ -114,7 +117,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
                 enter(r, RACE_GAP, now);
                 r->last_gap = r->distance;
             }
-        } else if ((o->valid_mask & VISION_DISTANCE_VALID) &&
+        } else if (measured_road && (o->valid_mask & VISION_DISTANCE_VALID) &&
                    o->element != r->held_element && o->confidence >= 0.50f) {
             if (o->element == VISION_ELEMENT_YELLOW && o->distance_m <= 0.80f) {
                 enter(r, RACE_BYPASS, now);
@@ -151,7 +154,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
             return stop;
         }
         if (new_frame) {
-            if (s >= 1.30f && road) ++r->clear_frames;
+            if (s >= 1.30f && measured_road) ++r->clear_frames;
             else r->clear_frames = 0;
         }
         if (r->clear_frames < 3) return drive(v_gap, limit(-3.0f * heading, 1.2f));
@@ -173,7 +176,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
         }
         target = RACE_BYPASS_SIDE * RACE_BYPASS_OFFSET_M;
         if (along > r->obstacle_m + 0.10f) target *= fmaxf(0, r->goal_m / 0.32f);
-        if (r->goal_m <= 0.02f && road && fabsf(r->offset) < 0.075f) {
+        if (r->goal_m <= 0.02f && measured_road && fabsf(r->offset) < 0.075f) {
             r->phase = RACE_TRACK;
             r->last_road_ms = now;
         } else {
@@ -183,16 +186,15 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
     }
     /* Line lost while following the track: keep the last accepted curvature
      * and slow down. The LCD warning is raised through r->degraded. */
-    r->degraded = r->phase == RACE_TRACK && !road;
+    r->degraded = r->phase == RACE_TRACK && !measured_road;
 #if RACE_VISION_LOST_STOP_MS > 0
-    if (r->degraded && r->have_curve &&
-        now - r->last_road_ms >= RACE_VISION_LOST_STOP_MS) {
+    if (r->degraded && now - r->last_road_ms >= RACE_VISION_LOST_STOP_MS) {
         r->phase = RACE_FAULT;
         return stop;
     }
 #endif
     curve = r->last_curve;
-    r->straight_m = fabsf(curve) < 1.75f ? r->straight_m + fmaxf(0,ds) : 0;
+    r->straight_m = fabsf(r->last_measured_curve) < 1.75f ? r->straight_m + fmaxf(0,ds) : 0;
     /* Bound lateral acceleration v²|k|, reduce speed on uncertain geometry. */
     {
         float lap_v = (r->lap == 1)
@@ -201,7 +203,7 @@ RaceDrive Race_Step(CarRace *r, const CarVisionObservation *o, float dl,
         float a_lat = fmaxf(0.55f, 0.30f * v_target * v_target);
         speed = fminf(lap_v, sqrtf(a_lat / (fabsf(curve) + 0.01f)));
     }
-    if (!road) speed = fminf(speed, RACE_VISION_HOLD_SPEED_MPS);
+    if (r->degraded) speed = fminf(speed, RACE_VISION_HOLD_SPEED_MPS);
     /* o is NULL when no fresh observation exists; the hold speed above already
      * bounds the command, so element-specific limits apply only to live frames. */
     if (o && (o->confidence < 0.65f || o->element == VISION_ELEMENT_RING ||

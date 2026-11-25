@@ -27,7 +27,8 @@ enum ValidMask : std::uint16_t {
     LateralValid = 1u << 0,
     HeadingValid = 1u << 1,
     CurvatureValid = 1u << 2,
-    DistanceValid = 1u << 3
+    DistanceValid = 1u << 3,
+    CurvatureEstimated = 1u << 4
 };
 
 // Fields use the units/ranges defined by the control repository's TYPE=1 contract.
@@ -70,7 +71,8 @@ inline std::uint16_t crc16(const std::uint8_t* data, std::size_t size) {
 }
 
 inline void validate(const TrackObservation& o) {
-    if (o.validMask > 15 || o.confidence > 1000 ||
+    if (o.validMask > 31 || ((o.validMask & CurvatureEstimated) && !(o.validMask & CurvatureValid)) ||
+        o.confidence > 1000 ||
         o.lateralMm < -1000 || o.lateralMm > 1000 ||
         o.headingMrad < -3142 || o.headingMrad > 3142 ||
         o.curvatureMilli < -20000 || o.curvatureMilli > 20000 ||

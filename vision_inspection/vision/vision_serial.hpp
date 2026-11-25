@@ -68,7 +68,7 @@ public:
 
     void setCameraStreaming(bool streaming) { cameraFrameMs_ = streaming ? nowMs() : 0; }
 
-    // One-shot HELLO. Caller is responsible for ensuring the F407 is physically in STOP.
+    // Announce the unchanged session. The F407 binds a new session only when stopped.
     void sendHello() { writeAll(encodeHello(session_)); }
 
     // Send current track/element observation and advance the shared business sequence.

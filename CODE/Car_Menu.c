@@ -85,7 +85,8 @@ StartCondition CarMenu_StartCondition(const Car_Core *car, uint8_t still, uint8_
     if (!vision_compiled()) return START_NO_VISION;
     if (!road || road->session == 0U) return START_NO_VISION;
     if (road->session == previous_session) return START_NEW_SESSION;
-    if (!(road->valid_mask & VISION_CURVATURE_VALID) || !(road->confidence >= 0.35f))
+    if (!(road->valid_mask & VISION_CURVATURE_VALID) ||
+        (road->valid_mask & VISION_CURVATURE_ESTIMATED) || !(road->confidence >= 0.35f))
         return START_NO_ROAD;
     return START_READY;
 }

@@ -266,31 +266,27 @@ static void accept(CarVision *v, uint32_t now, uint8_t allow_hello)
 
     if (type == 0 && len == 0 && age == 0)
     {
-        /* HELLO：声明新会话；停车状态之外不允许切换会话。 */
+        /* 周期重发的同会话 HELLO 不刷新观测、不推进序号，也不改计数。 */
+        if (v->session_valid && v->session == session)
+        {
+            return;
+        }
+
+        /* 只有停车且未在收尾时才允许绑定新会话。 */
         if (!allow_hello)
         {
             v->rejected_frames++;
             return;
         }
 
-        /*
-         * 新会话清空旧观测、数独块与序号；
-         * 同一会话重复发送 HELLO 不重置已有历史。
-         */
-        if (!v->session_valid || v->session != session)
+        v->have_observation = 0;
+        v->have_sequence = 0;
+        for (i = 0; i < 4; i++)
         {
-            v->have_observation = 0;                /* 旧观测失效 */
-            v->have_sequence = 0;                   /* 旧序号失效 */
-
-            for (i = 0; i < 4; i++)
-            {
-                v->tiles[i].valid = 0;              /* 四块数独数据失效 */
-            }
-
-            v->session = session;                   /* 绑定新会话 */
-            v->session_valid = 1;
+            v->tiles[i].valid = 0;
         }
-
+        v->session = session;
+        v->session_valid = 1;
         v->accepted_frames++;
         return;
     }
@@ -343,7 +339,8 @@ static void accept(CarVision *v, uint32_t now, uint8_t allow_hello)
          * 即使某有效位未置位，对应线上数值仍须在协议范围内；
          * 保留字段必须为 0，防止协议扩展时旧程序误读。
          */
-        if (flags > 15U ||
+        if (flags > 31U ||
+            ((flags & VISION_CURVATURE_ESTIMATED) && !(flags & VISION_CURVATURE_VALID)) ||
             confidence > 1000U ||
             lateral < -1000 || lateral > 1000 ||
             heading < -3142 || heading > 3142 ||

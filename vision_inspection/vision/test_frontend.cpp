@@ -12,8 +12,99 @@ cv::Mat road() {
     cv::rectangle(image, cv::Rect(200, 0, 240, 480), cv::Scalar(220, 220, 220), cv::FILLED);
     return image;
 }
+
+void checkRingRecovery() {
+    using bird::RingState;
+    std::vector<cv::Point2f> left, right, curvedRight;
+    for (int i = 0; i < 60; ++i) {
+        const float row = 460.f - 5.f * i;
+        left.emplace_back(205.f, row);
+        right.emplace_back(395.f, row);
+        curvedRight.emplace_back(395.f - 0.14f * i * i, row);
+    }
+
+    bird::RingStateMachine ring;
+    ring.state = RingState::LeftIn;
+    for (int i = 0; i < 5; ++i)
+        check(ring.update(false, false, false, false, left, right) == RingState::LeftIn,
+              "an early ring state survives a brief straight segment");
+    check(ring.update(false, false, false, false, left, right) == RingState::None,
+          "two sustained straight boundaries clear a false LEFT_IN");
+
+    ring.state = RingState::RightBegin;
+    for (int i = 0; i < 6; ++i)
+        ring.update(false, false, false, false, left, right);
+    check(ring.state == RingState::None, "the same recovery clears a false RIGHT_BEGIN");
+
+    auto diagonalLeft = left;
+    auto diagonalRight = right;
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        const float offset = 2.f * static_cast<float>(i);
+        diagonalLeft[i].x -= offset;
+        diagonalRight[i].x -= offset;
+    }
+    ring.state = RingState::LeftIn;
+    for (int i = 0; i < 5; ++i)
+        check(ring.update(false, false, false, false, diagonalLeft, diagonalRight) == RingState::LeftIn,
+              "parallel diagonal edges cannot advance LEFT_IN to LEFT_RUNNING");
+    check(ring.update(false, false, false, false, diagonalLeft, diagonalRight) == RingState::None,
+          "the diagonal straight corridor also clears a false LEFT_IN");
+
+    ring.state = RingState::LeftIn;
+    for (int i = 0; i < 3; ++i)
+        ring.update(false, false, false, false, left, curvedRight);
+    check(ring.state == RingState::LeftRunning, "turn evidence still advances a genuine left entry");
+}
+
+void checkSingleEdgeRecovery() {
+    const cv::Scalar blueColor(180,50,20), white(220,220,220);
+    cv::Mat measured(480, 640, CV_8UC3, blueColor);
+    cv::Mat leftOnly = measured.clone(), rightOnly = measured.clone();
+    for (int y = 0; y < measured.rows; ++y) {
+        const int bend = (479 - y) * (479 - y) / 12000;
+        const int left = 238 - y * 197 / 479 + bend;
+        const int right = 418 + y * 157 / 479 + bend;
+        cv::line(measured, {left,y}, {right,y}, white);
+        cv::line(leftOnly, {left,y}, {639,y}, white);
+        cv::line(rightOnly, {0,y}, {right,y}, white);
+    }
+    ProcessOptions options;
+    options.mode = TrackMode::Hsv;
+    const auto frame = [&](const cv::Mat& image, double ms) {
+        options.sourceTimeMs = ms;
+        return img_handle(image, false, options);
+    };
+    const auto estimated = [](const FrameResult& result) {
+        return (result.wireObservation.validMask & vision_link::CurvatureEstimated) != 0;
+    };
+
+    resetVisionState();
+    check(!frame(leftOnly, 0).previewFound, "a single edge without recent measured geometry is ignored");
+    auto full = frame(measured, 40);
+    check(full.previewFound && !estimated(full), "two visible edges seed measured road geometry");
+    for (int i = 1; i <= 4; ++i) {
+        auto partial = frame(leftOnly, 40 + 40*i);
+        check(partial.previewFound && estimated(partial) && partial.wireObservation.confidence == 450 &&
+              std::abs(partial.pursuit.lateralError - full.pursuit.lateralError) < 0.025f,
+              "clipped right edge briefly reuses the measured width and center");
+    }
+    check(!frame(leftOnly, 240).previewFound, "persistent single edge exhausts the four-frame limit");
+    full = frame(measured, 280);
+    check(full.previewFound && estimated(frame(rightOnly, 320)), "a new full measurement enables right-edge recovery");
+    check(!frame(rightOnly, 531).previewFound, "single-edge recovery expires after 250 ms");
+
+    frame(measured, 600);
+    cv::Mat gap(480, 640, CV_8UC3, blueColor);
+    auto missing = frame(gap, 640);
+    check(!missing.previewFound && !estimated(missing) && missing.wireObservation.element == vision_link::Element::Gap,
+          "a blue gap retains its existing element and does not invent steering");
+    check(!frame(leftOnly, 680).previewFound, "no stale single-edge recovery after an intervening gap");
+}
+
 int main(int argc, char** argv) {
     try {
+        checkRingRecovery();
+        checkSingleEdgeRecovery();
         const track::FrontendConfig c;
         auto straight = road();
         auto a = track::segment(straight, c);

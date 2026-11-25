@@ -22,6 +22,9 @@ class VisionWireTests(unittest.TestCase):
         with self.assertRaises(ValueError): link.tile_payload(0, [7] * 9)
         with self.assertRaises(ValueError): link.frame(1, 0, 123, link.track_payload(), 201)
 
+    def test_estimated_curvature_flag(self):
+        self.assertEqual(link.track_payload(valid_mask=20)[:2], b'\x00\x14')
+
     def test_sender_session_and_sequence_wrap(self):
         class Port:
             def __init__(self): self.frames = []

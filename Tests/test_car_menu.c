@@ -126,6 +126,9 @@ int main(void)
     road.confidence = 0.9f;
 #if CAR_VISION_ENABLE
     assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_READY);
+    road.valid_mask |= VISION_CURVATURE_ESTIMATED;
+    assert(CarMenu_StartCondition(&car,1,0,&road,11) == START_NO_ROAD);
+    road.valid_mask = VISION_CURVATURE_VALID;
     assert(CarMenu_StartCondition(&car,0,0,&road,11) == START_MOVING);
     assert(CarMenu_StartCondition(&car,1,1,&road,11) == START_RESULT);
     assert(CarMenu_StartCondition(&car,1,0,NULL,11) == START_NO_VISION);

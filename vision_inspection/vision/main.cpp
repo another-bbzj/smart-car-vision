@@ -36,7 +36,7 @@ void usage() {
         "  --http               enable browser viewer; open http://<board-ip>:8080/\n"
         "  --http-port N        browser viewer port, default 8080\n"
         "  --vision-uart DEV    live camera: send track and Sudoku tiles on UART (115200)\n"
-        "  --hello              send new-session HELLO; use only while F407 is STOPPED\n"
+        "  --hello              repeat this session's HELLO every second; start while F407 is STOPPED\n"
         "No actuator commands are transmitted. Inputs must be 640x480.\n";
 }
 
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
         using Clock = std::chrono::steady_clock;
         const auto start = Clock::now();
         double processTotalMs = 0;
-        bool helloPending = args.sendHello;
+        auto nextHello = Clock::time_point::min();
         bool cameraWarning = false;
         // 阶段 3：逐帧处理。记录来源时间和处理耗时；CSV 对每帧留档，
         // 图片按 saveEvery 抽样，减少长视频产生的磁盘占用。
@@ -173,10 +173,6 @@ int main(int argc, char** argv) {
                 }
                 cameraWarning = false;
                 if (visionSender) visionSender->setCameraStreaming(true);
-                if (helloPending) {
-                    visionSender->sendHello();
-                    helloPending = false;
-                }
                 sourceMs = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
             } else {
                 if (!capture.read(current) || current.empty()) {
@@ -186,7 +182,12 @@ int main(int argc, char** argv) {
                 sourceMs = capture.get(cv::CAP_PROP_POS_MSEC);
             }
             const auto frameReceived = Clock::now();
+            if (visionSender && args.sendHello && frameReceived >= nextHello) {
+                visionSender->sendHello();
+                nextHello = frameReceived + std::chrono::seconds(1);
+            }
             const auto t0 = frameReceived;
+            options.sourceTimeMs = sourceMs;
             const auto result = img_handle(current, false, options);
             const auto frameReady = Clock::now();
             const double ms = std::chrono::duration<double, std::milli>(frameReady - t0).count();

@@ -19,8 +19,45 @@ static unsigned make_frame(uint8_t *f, uint8_t type, uint16_t seq, uint32_t sess
 }
 static void feed(CarVision *v, const uint8_t *f, unsigned n, uint32_t t, uint8_t stopped)
 {unsigned i;for(i=0;i<n;i++)CarVision_Feed(v,f[i],t,stopped);}
+
+static void test_hello_recovery(void)
+{
+    const uint32_t session = 123;
+    const uint8_t data[16] = {0,0,0,0,0,0,0,0,0,0,0,255,0,0,0,0};
+    const uint8_t cells[10] = {0,1,2,3,4,5,6,1,2,3};
+    uint8_t hello[CAR_VISION_MAX_FRAME], track[CAR_VISION_MAX_FRAME], tile[CAR_VISION_MAX_FRAME];
+    unsigned hello_len = make_frame(hello,0,0,session,0,NULL,0);
+    unsigned track_len = make_frame(track,1,45,session,0,data,sizeof data);
+    unsigned tile_len = make_frame(tile,2,46,session,0,cells,sizeof cells);
+    CarVision vision;
+    CarVisionObservation observation;
+    CarVisionTile saved_tile;
+
+    CarVision_Init(&vision);
+    feed(&vision,hello,hello_len,100,1);
+    feed(&vision,track,track_len,120,1);
+    feed(&vision,tile,tile_len,130,1);
+    feed(&vision,hello,hello_len,140,1);
+    feed(&vision,hello,hello_len,150,0);
+    assert(vision.accepted_frames == 3 && vision.rejected_frames == 0);
+    assert(vision.last_sequence == 46 && CarVision_GetObservation(&vision,150,&observation));
+    assert(observation.received_ms == 120 && CarVision_GetTile(&vision,0,150,&saved_tile));
+
+    /* The sender keeps its session and sequence when only the STM32 resets. */
+    CarVision_Init(&vision);
+    feed(&vision,track,track_len,200,1);
+    assert(!CarVision_GetObservation(&vision,200,&observation));
+    feed(&vision,hello,hello_len,210,0);
+    assert(!vision.session_valid);
+    feed(&vision,hello,hello_len,220,1);
+    feed(&vision,track,track_len,230,1);
+    assert(CarVision_GetObservation(&vision,230,&observation));
+    assert(observation.session == session && observation.sequence == 45);
+}
+
 int main(void)
 {
+    test_hello_recovery();
     CarVision v; CarVisionObservation o; CarVisionTile tile;
     uint8_t f[64],data[16]={0,15,3,132,0,50,0,100,0,20,6,255,0,80,0,0};
     unsigned n; uint16_t crc=0xffff; const uint8_t *s=(const uint8_t *)"123456789";
@@ -105,6 +142,15 @@ int main(void)
     assert(CarVision_GetCameraStatus(&v,1101U) == VISION_CAMERA_UNKNOWN);
     CarVision_Invalidate(&v);
     assert(CarVision_GetCameraStatus(&v,100U) == VISION_CAMERA_UNKNOWN);
+    data[0] = 0;
+    data[1] = VISION_CURVATURE_ESTIMATED;
+    n = make_frame(f,1,3,789,0,data,16);
+    feed(&v,f,n,2000U,0);
+    assert(!CarVision_GetObservation(&v,2000U,&o));
+    data[1] |= VISION_CURVATURE_VALID;
+    n = make_frame(f,1,3,789,0,data,16);
+    feed(&v,f,n,2005U,0);
+    assert(CarVision_GetObservation(&v,2005U,&o) && o.valid_mask == data[1]);
     puts("vision interface: all checks passed");
     return 0;
 }

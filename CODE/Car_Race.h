@@ -6,7 +6,7 @@
  * from the actual start, increasing in the prescribed driving direction. */
 #define RACE_RADIUS_M        0.0325f /* 65 mm diameter; verify loaded rollout */
 #define RACE_TRACK_M         0.173f  /* (200 mm outside + 146 mm inside) / 2; verify by rotation */
-#define RACE_DEFAULT_RPM     160U    /* ~0.545 m/s nominal cruise RPM */
+#define RACE_DEFAULT_RPM     300U    /* ~1.02 m/s nominal cruise speed */
 #define RACE_MIN_RPM         20U     /* Safe low-speed test floor */
 #define RACE_MAX_RPM         900U    /* Matches CAR_RPM_LIMIT (90% of 1000 rpm) */
 #define RACE_RPM_STEP_FINE   5U      /* Single-press UP/DOWN step in menu */
@@ -20,16 +20,10 @@
 #define RACE_BYPASS_OFFSET_M 0.18f
 #define RACE_GYRO_SIGN       1.0f   /* chassis CCW is positive */
 
-/*
- * Vision-loss policy: a fresh frame without valid curvature, or no fresh frame
- * at all, no longer faults the race. The car keeps the last accepted curvature,
- * drives at the reduced speed below and raises only a warning on the LCD.
- * RACE_VISION_LOST_STOP_MS can restore a hard failsafe: set it to a nonzero
- * duration (milliseconds) to stop after that long without a valid road frame
- * while in RACE_TRACK. The gap phase is exempt because it is blind by design.
- */
+/* Slow down during a short dropout or single-edge estimate. Only a measured
+ * road observation refreshes the ordinary tracking timeout. Gap is exempt. */
 #define RACE_VISION_HOLD_SPEED_MPS 0.18f
-#define RACE_VISION_LOST_STOP_MS   0U
+#define RACE_VISION_LOST_STOP_MS   700U
 
 typedef enum { RACE_TRACK, RACE_GAP, RACE_BYPASS, RACE_RED,
                RACE_FINISHED, RACE_FAULT } RacePhase;
@@ -38,11 +32,12 @@ typedef struct {
     float distance, yaw, entry, entry_yaw, offset, obstacle_m, goal_m;
     float last_gap, last_action, straight_m;
     float last_curve;            /* last accepted curvature, 1/m */
+    float last_measured_curve;   /* keep gap-entry geometry independent of single-edge estimates */
     float target_rpm;            /* configured cruise wheel speed, rpm */
     uint32_t entered_ms, still_ms, last_road_ms;
     uint16_t last_sequence;
     uint8_t lap, clear_frames, held_element, have_sequence, timing_stop;
-    uint8_t degraded, have_curve;
+    uint8_t degraded, have_step_time;
 } CarRace;
 typedef struct { float rpm[2]; } RaceDrive;
 void Race_Start(CarRace *r);
